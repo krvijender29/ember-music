@@ -1,0 +1,156 @@
+/**
+ * AuraWave Music - Storage Module
+ * Manages localStorage for API keys, favorites, playlists, and user playback settings
+ */
+
+const StorageManager = {
+  KEYS: {
+    API_KEY: 'aurawave_yt_api_key',
+    LIKED_SONGS: 'aurawave_liked_songs',
+    RECENT_TRACKS: 'aurawave_recent_tracks',
+    PLAYLISTS: 'aurawave_custom_playlists',
+    SETTINGS: 'aurawave_player_settings'
+  },
+
+  DEFAULT_API_KEY: 'AIzaSyDUnACXuxfMyOy3OrCgRSgm3eTmsEFY9xw',
+
+  // API Key Handling
+  getApiKey() {
+    return localStorage.getItem(this.KEYS.API_KEY) || this.DEFAULT_API_KEY;
+  },
+
+  setApiKey(key) {
+    if (key && key.trim()) {
+      localStorage.setItem(this.KEYS.API_KEY, key.trim());
+    } else {
+      localStorage.removeItem(this.KEYS.API_KEY);
+    }
+  },
+
+  clearApiKey() {
+    localStorage.removeItem(this.KEYS.API_KEY);
+  },
+
+  hasApiKey() {
+    return Boolean(this.getApiKey());
+  },
+
+  isDefaultKey() {
+    return this.getApiKey() === this.DEFAULT_API_KEY;
+  },
+
+  // Liked Songs Handling
+  getLikedSongs() {
+    try {
+      const data = localStorage.getItem(this.KEYS.LIKED_SONGS);
+      return data ? JSON.parse(data) : [];
+    } catch (e) {
+      console.error('Failed to parse liked songs from localStorage', e);
+      return [];
+    }
+  },
+
+  isSongLiked(id) {
+    const list = this.getLikedSongs();
+    return list.some(song => song.id === id);
+  },
+
+  toggleLikeSong(track) {
+    const list = this.getLikedSongs();
+    const index = list.findIndex(s => s.id === track.id);
+    let isNowLiked = false;
+
+    if (index >= 0) {
+      list.splice(index, 1);
+      isNowLiked = false;
+    } else {
+      list.unshift(track);
+      isNowLiked = true;
+    }
+
+    localStorage.setItem(this.KEYS.LIKED_SONGS, JSON.stringify(list));
+    return isNowLiked;
+  },
+
+  // Recent History
+  getRecentTracks() {
+    try {
+      const data = localStorage.getItem(this.KEYS.RECENT_TRACKS);
+      return data ? JSON.parse(data) : [];
+    } catch (e) {
+      return [];
+    }
+  },
+
+  addRecentTrack(track) {
+    let list = this.getRecentTracks();
+    list = list.filter(t => t.id !== track.id);
+    list.unshift(track);
+    if (list.length > 30) list.pop();
+    localStorage.setItem(this.KEYS.RECENT_TRACKS, JSON.stringify(list));
+  },
+
+  // Custom Playlists
+  getPlaylists() {
+    try {
+      const data = localStorage.getItem(this.KEYS.PLAYLISTS);
+      return data ? JSON.parse(data) : [];
+    } catch (e) {
+      return [];
+    }
+  },
+
+  createPlaylist(name, description = '') {
+    const playlists = this.getPlaylists();
+    const newPlaylist = {
+      id: 'pl_' + Date.now(),
+      name,
+      description,
+      tracks: [],
+      createdAt: new Date().toISOString()
+    };
+    playlists.push(newPlaylist);
+    localStorage.setItem(this.KEYS.PLAYLISTS, JSON.stringify(playlists));
+    return newPlaylist;
+  },
+
+  addTrackToPlaylist(playlistId, track) {
+    const playlists = this.getPlaylists();
+    const pl = playlists.find(p => p.id === playlistId);
+    if (pl) {
+      if (!pl.tracks.some(t => t.id === track.id)) {
+        pl.tracks.push(track);
+        localStorage.setItem(this.KEYS.PLAYLISTS, JSON.stringify(playlists));
+        return true;
+      }
+    }
+    return false;
+  },
+
+  removeTrackFromPlaylist(playlistId, trackId) {
+    const playlists = this.getPlaylists();
+    const pl = playlists.find(p => p.id === playlistId);
+    if (pl) {
+      pl.tracks = pl.tracks.filter(t => t.id !== trackId);
+      localStorage.setItem(this.KEYS.PLAYLISTS, JSON.stringify(playlists));
+      return true;
+    }
+    return false;
+  },
+
+  // Player Settings (volume, repeat, shuffle)
+  getSettings() {
+    try {
+      const data = localStorage.getItem(this.KEYS.SETTINGS);
+      return data ? JSON.parse(data) : { volume: 80, repeat: 'all', shuffle: false };
+    } catch (e) {
+      return { volume: 80, repeat: 'all', shuffle: false };
+    }
+  },
+
+  saveSettings(settings) {
+    const current = this.getSettings();
+    const updated = { ...current, ...settings };
+    localStorage.setItem(this.KEYS.SETTINGS, JSON.stringify(updated));
+  }
+};
