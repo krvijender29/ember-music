@@ -14,12 +14,7 @@ import base64
 import os
 import sys
 
-PORT = 4321
-if len(sys.argv) > 1:
-    try:
-        PORT = int(sys.argv[1])
-    except ValueError:
-        pass
+PORT = int(os.environ.get("PORT", sys.argv[1] if len(sys.argv) > 1 else 4321))
 
 # ==============================================================================
 # Pure Python DES Decryptor (for JioSaavn Akamai 320kbps Stream Links)
