@@ -9,10 +9,56 @@ const StorageManager = {
     LIKED_SONGS: 'aurawave_liked_songs',
     RECENT_TRACKS: 'aurawave_recent_tracks',
     PLAYLISTS: 'aurawave_custom_playlists',
-    SETTINGS: 'aurawave_player_settings'
+    SETTINGS: 'aurawave_player_settings',
+    STREAMING_ENGINE: 'aurawave_streaming_engine',
+    PIPED_INSTANCE: 'aurawave_piped_instance',
+    ALT_CACHE: 'aurawave_alt_track_cache'
   },
 
   DEFAULT_API_KEY: 'AIzaSyDUnACXuxfMyOy3OrCgRSgm3eTmsEFY9xw',
+
+  // Streaming Engine Selection ('piped' | 'youtube')
+  getStreamingEngine() {
+    return localStorage.getItem(this.KEYS.STREAMING_ENGINE) || 'piped';
+  },
+
+  setStreamingEngine(engine) {
+    localStorage.setItem(this.KEYS.STREAMING_ENGINE, engine);
+  },
+
+  getPipedInstance() {
+    return localStorage.getItem(this.KEYS.PIPED_INSTANCE) || '';
+  },
+
+  setPipedInstance(url) {
+    if (url && url.trim()) {
+      localStorage.setItem(this.KEYS.PIPED_INSTANCE, url.trim().replace(/\/+$/, ''));
+    } else {
+      localStorage.removeItem(this.KEYS.PIPED_INSTANCE);
+    }
+  },
+
+  // Cache for resolved copyright fallback tracks
+  getCachedAlternative(originalId) {
+    try {
+      const data = localStorage.getItem(this.KEYS.ALT_CACHE);
+      const cache = data ? JSON.parse(data) : {};
+      return cache[originalId] || null;
+    } catch (e) {
+      return null;
+    }
+  },
+
+  setCachedAlternative(originalId, altTrack) {
+    try {
+      const data = localStorage.getItem(this.KEYS.ALT_CACHE);
+      const cache = data ? JSON.parse(data) : {};
+      cache[originalId] = altTrack;
+      localStorage.setItem(this.KEYS.ALT_CACHE, JSON.stringify(cache));
+    } catch (e) {
+      // Ignore quota errors
+    }
+  },
 
   // API Key Handling
   getApiKey() {

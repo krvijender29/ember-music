@@ -12,6 +12,7 @@ const DEFAULT_TRACKS = [
     duration: "03:56",
     durationSec: 236,
     thumbnail: "assets/images/ember_midnight.jpg",
+    audioUrl: "https://aac.saavncdn.com/356/274a784b31109d48d9a4a430c307d8e7_320.mp4",
     category: "ember",
     badge: "Ember Exclusive"
   },
@@ -23,6 +24,7 @@ const DEFAULT_TRACKS = [
     duration: "06:01",
     durationSec: 361,
     thumbnail: "https://i.ytimg.com/vi/fHI8X483mZ4/hqdefault.jpg",
+    audioUrl: "https://aac.saavncdn.com/077/6d9172a98f9f9310e613e633a7ce99ae_320.mp4",
     category: "rnb",
     badge: "Trending"
   },
@@ -34,6 +36,7 @@ const DEFAULT_TRACKS = [
     duration: "03:20",
     durationSec: 200,
     thumbnail: "https://i.ytimg.com/vi/4NRXx6U8ABQ/hqdefault.jpg",
+    audioUrl: "https://aac.saavncdn.com/077/0b02a92687d1ae3369b6859f44872e52_320.mp4",
     category: "pop",
     badge: "Chart Buster"
   },
@@ -45,6 +48,7 @@ const DEFAULT_TRACKS = [
     duration: "03:42",
     durationSec: 222,
     thumbnail: "assets/images/ember_rose.jpg",
+    audioUrl: "https://aac.saavncdn.com/209/46078fcc89b9fc5b0dd5131446586fb0_320.mp4",
     category: "rnb",
     badge: "Soul"
   },
@@ -56,6 +60,7 @@ const DEFAULT_TRACKS = [
     duration: "04:04",
     durationSec: 244,
     thumbnail: "assets/images/ember_drive.jpg",
+    audioUrl: "https://aac.saavncdn.com/209/46078fcc89b9fc5b0dd5131446586fb0_320.mp4",
     category: "ember",
     badge: "Atmosphere"
   },

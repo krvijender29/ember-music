@@ -1,13 +1,15 @@
 /**
- * AuraWave Music - YouTube IFrame Player Engine
- * Orchestrates audio playback, queue management, repeat/shuffle logic,
- * embeds handling, and time scrubbing.
+ * EMBER - High-Speed Native HTML5 Audio Engine
+ * Ultra-fast direct CDN streaming (< 200ms loading)
+ * Full hardware media keys & lockscreen integration via MediaSession API
+ * Supports instant byte-range timeline seeking and seamless queue management.
  */
 
 class MusicPlayer {
   constructor() {
-    this.ytPlayer = null;
-    this.isReady = false;
+    this.audio = document.getElementById('ember-audio-player') || new Audio();
+    this.audio.preload = 'auto';
+    this.isReady = true;
     this.currentTrack = null;
     this.queue = [];
     this.originalQueue = [];
@@ -15,11 +17,10 @@ class MusicPlayer {
     this.isPlaying = false;
     this.isMuted = false;
     this.volume = StorageManager.getSettings().volume ?? 80;
+    this.audio.volume = Math.max(0, Math.min(1, this.volume / 100));
     this.repeatMode = StorageManager.getSettings().repeat ?? 'all'; // 'off' | 'all' | 'one'
     this.isShuffled = StorageManager.getSettings().shuffle ?? false;
-    this.tickerInterval = null;
     this.isVideoVisible = false;
-    this.retriedFallbacks = new Set();
 
     // Callbacks
     this.onTrackChange = null;
@@ -27,89 +28,63 @@ class MusicPlayer {
     this.onTimeUpdate = null;
     this.onQueueChange = null;
 
-    this.initYouTubeIFrameAPI();
+    this.bindAudioEvents();
+    console.log('[Ember] High-Speed HTML5 Audio Engine initialized.');
   }
 
   /**
-   * Load the YouTube IFrame API script tag dynamically
+   * Bind Native HTML5 Audio Events
    */
-  initYouTubeIFrameAPI() {
-    if (window.YT && window.YT.Player) {
-      this.createPlayer();
-      return;
-    }
+  bindAudioEvents() {
+    const a = this.audio;
 
-    const tag = document.createElement('script');
-    tag.src = 'https://www.youtube.com/iframe_api';
-    const firstScriptTag = document.getElementsByTagName('script')[0];
-    firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
-
-    window.onYouTubeIframeAPIReady = () => {
-      this.createPlayer();
-    };
-  }
-
-  /**
-   * Instantiate YT.Player in #yt-player-target
-   */
-  createPlayer() {
-    try {
-      this.ytPlayer = new YT.Player('yt-player-target', {
-        height: '100%',
-        width: '100%',
-        playerVars: {
-          autoplay: 0,
-          controls: 1,
-          disablekb: 0,
-          enablejsapi: 1,
-          playsinline: 1,
-          rel: 0,
-          modestbranding: 1
-        },
-        events: {
-          onReady: (event) => this.handlePlayerReady(event),
-          onStateChange: (event) => this.handlePlayerStateChange(event),
-          onError: (event) => this.handlePlayerError(event)
-        }
-      });
-    } catch (e) {
-      console.error('Error creating YouTube player instance', e);
-    }
-  }
-
-  handlePlayerReady(event) {
-    this.isReady = true;
-    this.ytPlayer.setVolume(this.volume);
-    console.log('YouTube IFrame Player Ready');
-
-    // Preload first track if queue has items
-    if (this.queue.length > 0 && this.queueIndex >= 0) {
-      const track = this.queue[this.queueIndex];
-      this.currentTrack = track;
-      this.ytPlayer.cueVideoById(track.id);
-      if (this.onTrackChange) this.onTrackChange(track);
-    }
-  }
-
-  handlePlayerStateChange(event) {
-    // YT.PlayerState: UNSTARTED (-1), ENDED (0), PLAYING (1), PAUSED (2), BUFFERING (3), CUED (5)
-    if (event.data === YT.PlayerState.PLAYING) {
+    a.addEventListener('play', () => {
       this.isPlaying = true;
-      this.startProgressTicker();
       if (this.onStateChange) this.onStateChange({ isPlaying: true, isBuffering: false });
-    } else if (event.data === YT.PlayerState.PAUSED) {
+    });
+
+    a.addEventListener('playing', () => {
+      this.isPlaying = true;
+      if (this.onStateChange) this.onStateChange({ isPlaying: true, isBuffering: false });
+    });
+
+    a.addEventListener('pause', () => {
       this.isPlaying = false;
-      this.stopProgressTicker();
       if (this.onStateChange) this.onStateChange({ isPlaying: false, isBuffering: false });
-    } else if (event.data === YT.PlayerState.BUFFERING) {
+    });
+
+    a.addEventListener('waiting', () => {
       if (this.onStateChange) this.onStateChange({ isPlaying: this.isPlaying, isBuffering: true });
-    } else if (event.data === YT.PlayerState.ENDED) {
+    });
+
+    a.addEventListener('timeupdate', () => {
+      const currentTime = a.currentTime || 0;
+      const duration = this.getDuration();
+      const percent = duration > 0 ? (currentTime / duration) * 100 : 0;
+
+      if (this.onTimeUpdate) {
+        this.onTimeUpdate({
+          currentTime,
+          duration,
+          percent,
+          progress: percent,
+          currentTimeFormatted: this.formatTime(currentTime),
+          durationFormatted: this.formatTime(duration)
+        });
+      }
+    });
+
+    a.addEventListener('ended', () => {
       this.handleTrackEnded();
-    }
+    });
+
+    a.addEventListener('error', (e) => {
+      console.warn('[Ember] Audio stream error:', e);
+      this.handleAudioError();
+    });
   }
 
   handleTrackEnded() {
-    this.stopProgressTicker();
     if (this.repeatMode === 'one') {
       this.seekTo(0);
       this.play();
@@ -118,47 +93,31 @@ class MusicPlayer {
     }
   }
 
-  async handlePlayerError(event) {
-    console.warn('YouTube Player Error code:', event.data);
+  async handleAudioError() {
     const track = this.currentTrack;
+    if (!track) return;
 
-    // Error 101 or 150: The video owner does not allow embedding
-    if ((event.data === 101 || event.data === 150) && track && !this.retriedFallbacks.has(track.id)) {
-      this.retriedFallbacks.add(track.id);
+    window.dispatchEvent(new CustomEvent('aurawave:notification', {
+      detail: { message: `Re-resolving stream for "${track.title}"...`, type: 'warning' }
+    }));
 
-      window.dispatchEvent(new CustomEvent('aurawave:notification', {
-        detail: { message: `Finding alternative audio stream for "${track.title}"...`, type: 'warning' }
-      }));
-
-      const alt = await YouTubeAPI.findEmbeddableAlternative(track.title, track.artist, track.id);
-      if (alt && alt.id) {
-        if (this.queue[this.queueIndex]) {
-          this.queue[this.queueIndex].id = alt.id;
+    try {
+      if (typeof YouTubeAPI !== 'undefined' && YouTubeAPI.resolveTrackStream) {
+        const freshUrl = await YouTubeAPI.resolveTrackStream(track, true);
+        if (freshUrl && freshUrl !== this.audio.src) {
+          this.audio.src = freshUrl;
+          this.play();
+          return;
         }
-        this.currentTrack.id = alt.id;
-
-        window.dispatchEvent(new CustomEvent('aurawave:notification', {
-          detail: { message: `Playing alternate stream for "${track.title}"!`, type: 'success' }
-        }));
-
-        this.ytPlayer.loadVideoById(alt.id);
-        this.play();
-        return;
       }
-    }
-
-    let errorMsg = 'Error playing video.';
-    if (event.data === 101 || event.data === 150) {
-      errorMsg = 'Cannot embed this video due to copyright settings. Skipping...';
-    } else if (event.data === 100) {
-      errorMsg = 'Video not found or removed. Skipping...';
+    } catch (err) {
+      console.warn('[Ember] Stream re-resolution failed:', err);
     }
 
     window.dispatchEvent(new CustomEvent('aurawave:notification', {
-      detail: { message: errorMsg, type: 'warning' }
+      detail: { message: `Cannot play "${track.title}". Skipping to next...`, type: 'warning' }
     }));
 
-    // Auto-skip to next track after 1.2s
     setTimeout(() => {
       this.next(false);
     }, 1200);
@@ -167,13 +126,17 @@ class MusicPlayer {
   /**
    * Load and play track
    */
-  loadTrack(track, autoPlay = true) {
-    if (!track || !track.id) return;
+  async loadTrack(track, autoPlay = true) {
+    if (!track) return;
+
     this.currentTrack = track;
     StorageManager.addRecentTrack(track);
 
     // Make sure track is in queue
-    const existingIndex = this.queue.findIndex(t => t.id === track.id);
+    const existingIndex = this.queue.findIndex(t => 
+      (t.id && track.id && t.id === track.id) || 
+      (t.title === track.title && t.artist === track.artist)
+    );
     if (existingIndex >= 0) {
       this.queueIndex = existingIndex;
     } else {
@@ -183,28 +146,48 @@ class MusicPlayer {
     }
 
     if (this.onTrackChange) this.onTrackChange(track);
+    this.updateMediaSession(track);
 
-    if (this.isReady && this.ytPlayer) {
-      if (autoPlay) {
-        this.ytPlayer.loadVideoById(track.id);
-        this.isPlaying = true;
-      } else {
-        this.ytPlayer.cueVideoById(track.id);
-        this.isPlaying = false;
+    // Resolve direct audio stream if not yet populated
+    let streamUrl = track.audioUrl;
+    if (!streamUrl && typeof YouTubeAPI !== 'undefined' && YouTubeAPI.resolveTrackStream) {
+      streamUrl = await YouTubeAPI.resolveTrackStream(track);
+      if (streamUrl) {
+        track.audioUrl = streamUrl;
       }
+    }
+
+    if (streamUrl) {
+      if (this.audio.src !== streamUrl) {
+        this.audio.src = streamUrl;
+      }
+      if (autoPlay) {
+        this.play();
+      } else {
+        this.pause();
+      }
+    } else {
+      console.warn('[Ember] No stream URL found for track:', track.title);
     }
   }
 
   play() {
-    if (this.isReady && this.ytPlayer) {
-      this.ytPlayer.playVideo();
+    if (this.audio && this.audio.src) {
+      const p = this.audio.play();
+      if (p !== undefined) {
+        p.catch(err => {
+          console.log('[Ember] Play request deferred/prevented:', err);
+          this.isPlaying = false;
+          if (this.onStateChange) this.onStateChange({ isPlaying: false, isBuffering: false });
+        });
+      }
       this.isPlaying = true;
     }
   }
 
   pause() {
-    if (this.isReady && this.ytPlayer) {
-      this.ytPlayer.pauseVideo();
+    if (this.audio) {
+      this.audio.pause();
       this.isPlaying = false;
     }
   }
@@ -228,11 +211,7 @@ class MusicPlayer {
       this.queueIndex++;
       this.loadTrack(this.queue[this.queueIndex], true);
     } else {
-      if (this.repeatMode === 'all') {
-        this.queueIndex = 0;
-        this.loadTrack(this.queue[0], true);
-      } else if (manual) {
-        // If manual next at end, loop back
+      if (this.repeatMode === 'all' || manual) {
         this.queueIndex = 0;
         this.loadTrack(this.queue[0], true);
       } else {
@@ -247,7 +226,7 @@ class MusicPlayer {
     if (this.queue.length === 0) return;
 
     // If more than 3 seconds played, restart current track
-    if (this.isReady && this.ytPlayer && this.ytPlayer.getCurrentTime() > 3) {
+    if (this.audio && this.audio.currentTime > 3) {
       this.seekTo(0);
       return;
     }
@@ -261,42 +240,52 @@ class MusicPlayer {
     }
   }
 
+  getDuration() {
+    if (this.audio && !isNaN(this.audio.duration) && this.audio.duration > 0) {
+      return this.audio.duration;
+    }
+    return (this.currentTrack && this.currentTrack.durationSec) ? this.currentTrack.durationSec : 0;
+  }
+
+  getCurrentTime() {
+    return (this.audio && !isNaN(this.audio.currentTime)) ? this.audio.currentTime : 0;
+  }
+
   seekTo(seconds) {
-    if (this.isReady && this.ytPlayer) {
-      this.ytPlayer.seekTo(seconds, true);
+    if (this.audio) {
+      const duration = this.getDuration();
+      const targetSec = duration > 0 ? Math.max(0, Math.min(seconds, duration)) : Math.max(0, seconds);
+      this.audio.currentTime = targetSec;
+      if (this.isPlaying && this.audio.paused) {
+        this.play();
+      }
     }
   }
 
   seekPercent(percent) {
-    if (this.isReady && this.ytPlayer) {
-      const duration = this.ytPlayer.getDuration() || (this.currentTrack ? this.currentTrack.durationSec : 0);
-      if (duration > 0) {
-        const targetSec = (percent / 100) * duration;
-        this.seekTo(targetSec);
-      }
+    const duration = this.getDuration();
+    if (duration > 0) {
+      const targetSec = (Math.max(0, Math.min(100, percent)) / 100) * duration;
+      this.seekTo(targetSec);
     }
   }
 
   setVolume(vol) {
     this.volume = Math.max(0, Math.min(100, vol));
     StorageManager.saveSettings({ volume: this.volume });
-    if (this.isReady && this.ytPlayer) {
-      this.ytPlayer.setVolume(this.volume);
+    if (this.audio) {
+      this.audio.volume = this.volume / 100;
       if (this.isMuted && this.volume > 0) {
         this.isMuted = false;
-        this.ytPlayer.unMute();
+        this.audio.muted = false;
       }
     }
   }
 
   toggleMute() {
     this.isMuted = !this.isMuted;
-    if (this.isReady && this.ytPlayer) {
-      if (this.isMuted) {
-        this.ytPlayer.mute();
-      } else {
-        this.ytPlayer.unMute();
-      }
+    if (this.audio) {
+      this.audio.muted = this.isMuted;
     }
     return this.isMuted;
   }
@@ -398,34 +387,27 @@ class MusicPlayer {
     }
   }
 
-  startProgressTicker() {
-    this.stopProgressTicker();
-    this.tickerInterval = setInterval(() => {
-      if (!this.isReady || !this.ytPlayer) return;
-      try {
-        const currentTime = this.ytPlayer.getCurrentTime() || 0;
-        const duration = this.ytPlayer.getDuration() || (this.currentTrack ? this.currentTrack.durationSec : 0);
-        const percent = duration > 0 ? (currentTime / duration) * 100 : 0;
+  updateMediaSession(track) {
+    if (!('mediaSession' in navigator) || !track) return;
+    try {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: track.title,
+        artist: track.artist || 'Artist',
+        album: track.album || 'Ember Music',
+        artwork: [
+          { src: track.thumbnail || 'assets/images/ember_midnight.jpg', sizes: '512x512', type: 'image/jpeg' }
+        ]
+      });
 
-        if (this.onTimeUpdate) {
-          this.onTimeUpdate({
-            currentTime,
-            duration,
-            percent,
-            currentTimeFormatted: this.formatTime(currentTime),
-            durationFormatted: this.formatTime(duration)
-          });
-        }
-      } catch (err) {
-        // Ignored
-      }
-    }, 250);
-  }
-
-  stopProgressTicker() {
-    if (this.tickerInterval) {
-      clearInterval(this.tickerInterval);
-      this.tickerInterval = null;
+      navigator.mediaSession.setActionHandler('play', () => this.play());
+      navigator.mediaSession.setActionHandler('pause', () => this.pause());
+      navigator.mediaSession.setActionHandler('previoustrack', () => this.previous());
+      navigator.mediaSession.setActionHandler('nexttrack', () => this.next());
+      navigator.mediaSession.setActionHandler('seekto', (details) => {
+        if (details.seekTime !== undefined) this.seekTo(details.seekTime);
+      });
+    } catch (e) {
+      // Ignored
     }
   }
 

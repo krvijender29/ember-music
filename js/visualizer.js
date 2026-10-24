@@ -111,11 +111,11 @@ class AudioVisualizer {
       const x = i * (barWidth + gap) + gap / 2;
       const y = this.height - h;
 
-      // Dynamic color gradient (Cyan to Electric Violet to Pink)
+      // Dynamic monochrome gradient (White to Silver to Muted)
       const grad = this.ctx.createLinearGradient(0, y, 0, this.height);
-      grad.addColorStop(0, '#ec4899'); // Neon Pink top
-      grad.addColorStop(0.5, '#8b5cf6'); // Violet mid
-      grad.addColorStop(1, 'rgba(6, 182, 212, 0.2)'); // Cyan base
+      grad.addColorStop(0, '#ffffff'); // Pure White top
+      grad.addColorStop(0.5, 'rgba(255, 255, 255, 0.75)'); // Silver mid
+      grad.addColorStop(1, 'rgba(165, 165, 198, 0.15)'); // Subtle base
 
       this.ctx.fillStyle = grad;
       this.ctx.beginPath();
@@ -125,7 +125,7 @@ class AudioVisualizer {
 
       // Glowing peak cap
       this.ctx.fillStyle = '#ffffff';
-      this.ctx.shadowColor = '#06b6d4';
+      this.ctx.shadowColor = '#ffffff';
       this.ctx.shadowBlur = 8;
       this.ctx.fillRect(x, y - 2, barWidth, 2);
       this.ctx.shadowBlur = 0;
@@ -136,10 +136,10 @@ class AudioVisualizer {
     const centerY = this.height / 2;
     this.ctx.lineWidth = 3;
 
-    // Layer 1 - Violet Wave
-    this.ctx.strokeStyle = '#8b5cf6';
-    this.ctx.shadowColor = '#8b5cf6';
-    this.ctx.shadowBlur = 12;
+    // Layer 1 - Crisp White Wave
+    this.ctx.strokeStyle = '#ffffff';
+    this.ctx.shadowColor = '#ffffff';
+    this.ctx.shadowBlur = 10;
     this.ctx.beginPath();
     for (let i = 0; i < this.barCount; i++) {
       const x = (i / (this.barCount - 1)) * this.width;
@@ -150,10 +150,10 @@ class AudioVisualizer {
     }
     this.ctx.stroke();
 
-    // Layer 2 - Cyan Wave
-    this.ctx.strokeStyle = '#06b6d4';
-    this.ctx.shadowColor = '#06b6d4';
-    this.ctx.shadowBlur = 10;
+    // Layer 2 - Silver Muted Wave
+    this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.45)';
+    this.ctx.shadowColor = 'rgba(255, 255, 255, 0.2)';
+    this.ctx.shadowBlur = 6;
     this.ctx.beginPath();
     for (let i = 0; i < this.barCount; i++) {
       const x = (i / (this.barCount - 1)) * this.width;

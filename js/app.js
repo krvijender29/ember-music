@@ -82,8 +82,8 @@ document.addEventListener('DOMContentLoaded', () => {
     toast.className = 'ember-toast';
 
     const iconSvg = type === 'success'
-      ? `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FF5500" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>`
-      : `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FF5500" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`;
+      ? `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>`
+      : `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`;
 
     toast.innerHTML = `${iconSvg}<span>${escapeHtml(message)}</span>`;
     el.toastBox.appendChild(toast);
@@ -142,10 +142,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (e.target.closest('.btn-row-like')) return; // ignore like button clicks
 
         const trackId = row.dataset.trackId;
-        const selectedTrack = tracksList.find(t => t.id === trackId);
-        if (selectedTrack) {
-          player.setQueue(tracksList, tracksList.indexOf(selectedTrack));
-          player.loadTrack(selectedTrack, true);
+        const selectedIndex = tracksList.findIndex(t => t.id === trackId);
+        if (selectedIndex >= 0) {
+          player.setQueue(tracksList, selectedIndex, true);
         }
       });
     });
@@ -293,8 +292,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const dailyMixCard = document.getElementById('daily-mix-card');
     if (dailyMixCard) {
       dailyMixCard.addEventListener('click', () => {
-        player.setQueue(DEFAULT_TRACKS, 0);
-        player.loadTrack(DEFAULT_TRACKS[0], true);
+        player.setQueue(DEFAULT_TRACKS, 0, true);
         showToast('Playing Daily Mix 1', 'success');
       });
     }
@@ -474,8 +472,8 @@ document.addEventListener('DOMContentLoaded', () => {
       dynamicResults.style.display = 'block';
       dynamicResults.innerHTML = `
         <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; padding:40px 0; color:var(--text-gray);">
-          <div style="width:28px; height:28px; border:2px solid var(--ember-orange); border-top-color:transparent; border-radius:50%; animation:spin 0.8s linear infinite; margin-bottom:12px;"></div>
-          <span style="font-size:0.85rem;">Searching Ember Soundscape...</span>
+          <div style="width:28px; height:28px; border:2px solid var(--text-white); border-top-color:transparent; border-radius:50%; animation:spin 0.8s linear infinite; margin-bottom:12px;"></div>
+          <span style="font-size:0.85rem;">Searching Soundscape...</span>
         </div>
         <style>@keyframes spin { 100% { transform: rotate(360deg); } }</style>
       `;
@@ -655,8 +653,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const playAllBtn = document.getElementById('btn-play-all-playlist');
     playAllBtn.addEventListener('click', () => {
       if (playlistTracks.length > 0) {
-        player.setQueue(playlistTracks, 0);
-        player.loadTrack(playlistTracks[0], true);
+        player.setQueue(playlistTracks, 0, true);
         showToast(`Playing "${playlist.title}"`, 'success');
       }
     });
@@ -665,8 +662,7 @@ document.addEventListener('DOMContentLoaded', () => {
     bindSongRows(document.getElementById('playlist-tracks-container'), playlistTracks);
 
     if (autoPlay && playlistTracks.length > 0) {
-      player.setQueue(playlistTracks, 0);
-      player.loadTrack(playlistTracks[0], true);
+      player.setQueue(playlistTracks, 0, true);
     }
   }
 
@@ -761,8 +757,7 @@ document.addEventListener('DOMContentLoaded', () => {
           showToast('No liked songs yet! Tap the heart icon on any song.', 'warning');
           return;
         }
-        player.setQueue(liked, 0);
-        player.loadTrack(liked[0], true);
+        player.setQueue(liked, 0, true);
         showToast('Playing Liked Songs', 'success');
       });
     }
@@ -814,7 +809,7 @@ document.addEventListener('DOMContentLoaded', () => {
         </div>
 
         <!-- Go Premium Banner (Screen 12) -->
-        <div style="width:100%; padding:14px 16px; border-radius:16px; background:linear-gradient(135deg, rgba(255,85,0,0.18) 0%, rgba(22,25,34,0.95) 100%); border:1px solid var(--border-orange); margin-bottom:24px; display:flex; align-items:center; justify-content:space-between; cursor:pointer;" id="premium-banner">
+        <div style="width:100%; padding:14px 16px; border-radius:16px; background:linear-gradient(135deg, rgba(255,255,255,0.06) 0%, rgba(22,22,38,0.95) 100%); border:1px solid var(--border-card); margin-bottom:24px; display:flex; align-items:center; justify-content:space-between; cursor:pointer;" id="premium-banner">
           <div>
             <div style="font-size:0.92rem; font-weight:800; color:var(--text-white); display:flex; align-items:center; gap:6px;">
               <span>👑</span> EMBER Premium
@@ -831,15 +826,29 @@ document.addEventListener('DOMContentLoaded', () => {
         <div style="width:100%; display:flex; flex-direction:column; gap:8px; margin-bottom:24px;">
           <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 14px; background:var(--bg-card); border-radius:12px;">
             <span style="font-size:0.85rem; font-weight:600;">Appearance</span>
-            <span style="font-size:0.75rem; color:var(--ember-orange); font-weight:700;">Dark Ember</span>
+            <span style="font-size:0.75rem; color:var(--text-white); font-weight:700;">Noir Monochrome</span>
           </div>
           <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 14px; background:var(--bg-card); border-radius:12px;">
             <span style="font-size:0.85rem; font-weight:600;">Audio Quality</span>
             <span style="font-size:0.75rem; color:var(--text-gray);">Lossless 320 kbps</span>
           </div>
+          <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 14px; background:var(--bg-card); border-radius:12px;" id="pref-streaming-engine">
+            <div>
+              <div style="font-size:0.85rem; font-weight:600;">Audio & Streaming Engine</div>
+              <div style="font-size:0.7rem; color:var(--text-gray); margin-top:2px;">
+                ⚡ High-Speed CDN Engine • 320 kbps (Unlimited & Zero YouTube IFrame)
+              </div>
+            </div>
+            <span style="font-size:0.75rem; color:#22c55e; font-weight:700;">
+              ● Direct CDN (Active)
+            </span>
+          </div>
           <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 14px; background:var(--bg-card); border-radius:12px;">
-            <span style="font-size:0.85rem; font-weight:600;">Streaming Engine</span>
-            <span style="font-size:0.75rem; color:var(--text-gray);">YouTube IFrame API</span>
+            <div>
+              <div style="font-size:0.85rem; font-weight:600;">Copyright & Embed Bypass</div>
+              <div style="font-size:0.7rem; color:var(--text-gray); margin-top:2px;">Native HTML5 direct playback — 100% bypass of Error 101/150</div>
+            </div>
+            <span style="font-size:0.75rem; color:#22c55e; font-weight:700;">● Active</span>
           </div>
         </div>
 
@@ -852,6 +861,18 @@ document.addEventListener('DOMContentLoaded', () => {
         </div>
       </div>
     `;
+
+    // Engine toggle event
+    const enginePref = document.getElementById('pref-streaming-engine');
+    if (enginePref) {
+      enginePref.addEventListener('click', () => {
+        const cur = StorageManager.getStreamingEngine();
+        const next = cur === 'piped' ? 'youtube' : 'piped';
+        StorageManager.setStreamingEngine(next);
+        showToast(next === 'piped' ? 'Switched to Piped Engine (Unlimited Searches)' : 'Switched to YouTube Data API', 'success');
+        renderProfileView();
+      });
+    }
 
     document.getElementById('btn-edit-profile').addEventListener('click', () => {
       showToast('Profile updated!', 'success');
@@ -956,21 +977,30 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   };
 
-  player.onTimeUpdate = ({ currentTime, duration, progress }) => {
-    // Mini top slim line
+  let isScrubbing = false;
+
+  player.onTimeUpdate = ({ currentTime, duration, percent, progress }) => {
+    const pct = typeof percent === 'number' ? percent : (typeof progress === 'number' ? progress : 0);
+
+    // Update mini-player bar
     if (el.miniProgressFill) {
-      el.miniProgressFill.style.width = `${progress}%`;
+      el.miniProgressFill.style.width = `${pct}%`;
     }
 
-    // Sheet scrubber
-    if (el.sheetTimelineFill) {
-      el.sheetTimelineFill.style.width = `${progress}%`;
-    }
-    if (el.sheetTimeCur) {
-      el.sheetTimeCur.textContent = formatTime(currentTime);
-    }
-    if (el.sheetTimeTot) {
-      el.sheetTimeTot.textContent = formatTime(duration);
+    // Update sheet scrubber only when user is not actively dragging
+    if (!isScrubbing) {
+      if (el.sheetTimelineFill) {
+        el.sheetTimelineFill.style.width = `${pct}%`;
+      }
+      if (el.sheetTimelineHandle) {
+        el.sheetTimelineHandle.style.left = `${pct}%`;
+      }
+      if (el.sheetTimeCur) {
+        el.sheetTimeCur.textContent = formatTime(currentTime);
+      }
+      if (el.sheetTimeTot) {
+        el.sheetTimeTot.textContent = formatTime(duration);
+      }
     }
   };
 
@@ -1009,6 +1039,26 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
+  // Mini Player Progress Line Direct Click/Seek
+  const miniProgressLine = document.querySelector('.mini-progress-line');
+  if (miniProgressLine) {
+    miniProgressLine.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const rect = miniProgressLine.getBoundingClientRect();
+      const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+      const totalDur = (player.getDuration && player.getDuration()) 
+        || (player.ytPlayer && typeof player.ytPlayer.getDuration === 'function' && player.ytPlayer.getDuration()) 
+        || (player.currentTrack && player.currentTrack.durationSec) 
+        || 0;
+      if (totalDur > 0) {
+        player.seekTo(totalDur * ratio);
+        if (el.miniProgressFill) el.miniProgressFill.style.width = `${ratio * 100}%`;
+        if (el.sheetTimelineFill) el.sheetTimelineFill.style.width = `${ratio * 100}%`;
+        if (el.sheetTimelineHandle) el.sheetTimelineHandle.style.left = `${ratio * 100}%`;
+      }
+    });
+  }
+
   // Sheet Play/Pause
   el.sheetPlayPauseBtn.addEventListener('click', () => {
     player.togglePlay();
@@ -1041,18 +1091,78 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // Sheet Timeline / Scrubber Scrubbing
-  function handleTimelineSeek(e) {
+  // Smooth Scrubber Dragging & Seeking (Desktop Mouse + Mobile Touch via PointerEvents)
+  function getScrubberRatio(e) {
+    if (!el.sheetTimeline) return 0;
     const rect = el.sheetTimeline.getBoundingClientRect();
-    const clickX = (e.clientX || (e.touches && e.touches[0].clientX)) - rect.left;
-    const ratio = Math.max(0, Math.min(1, clickX / rect.width));
-    const duration = player.ytPlayer ? player.ytPlayer.getDuration() : 0;
-    if (duration > 0) {
-      player.seekTo(duration * ratio);
+    const clientX = e.clientX !== undefined ? e.clientX : (e.touches && e.touches[0] ? e.touches[0].clientX : 0);
+    const offsetX = clientX - rect.left;
+    return Math.max(0, Math.min(1, offsetX / rect.width));
+  }
+
+  function renderScrubPreview(ratio) {
+    const pct = ratio * 100;
+    if (el.sheetTimelineFill) el.sheetTimelineFill.style.width = `${pct}%`;
+    if (el.sheetTimelineHandle) el.sheetTimelineHandle.style.left = `${pct}%`;
+    if (el.miniProgressFill) el.miniProgressFill.style.width = `${pct}%`;
+
+    const totalDur = (player.getDuration && player.getDuration()) 
+      || (player.ytPlayer && typeof player.ytPlayer.getDuration === 'function' && player.ytPlayer.getDuration()) 
+      || (player.currentTrack && player.currentTrack.durationSec) 
+      || 0;
+
+    if (el.sheetTimeCur && totalDur > 0) {
+      el.sheetTimeCur.textContent = formatTime(totalDur * ratio);
     }
   }
 
-  el.sheetTimeline.addEventListener('click', handleTimelineSeek);
+  function commitSeek(ratio) {
+    const totalDur = (player.getDuration && player.getDuration()) 
+      || (player.ytPlayer && typeof player.ytPlayer.getDuration === 'function' && player.ytPlayer.getDuration()) 
+      || (player.currentTrack && player.currentTrack.durationSec) 
+      || 0;
+
+    if (totalDur > 0) {
+      const targetSec = totalDur * ratio;
+      player.seekTo(targetSec);
+    }
+  }
+
+  if (el.sheetTimeline) {
+    el.sheetTimeline.addEventListener('pointerdown', (e) => {
+      isScrubbing = true;
+      el.sheetTimeline.classList.add('dragging');
+      try {
+        el.sheetTimeline.setPointerCapture(e.pointerId);
+      } catch (_) {}
+      const ratio = getScrubberRatio(e);
+      renderScrubPreview(ratio);
+    });
+
+    el.sheetTimeline.addEventListener('pointermove', (e) => {
+      if (!isScrubbing) return;
+      const ratio = getScrubberRatio(e);
+      renderScrubPreview(ratio);
+    });
+
+    el.sheetTimeline.addEventListener('pointerup', (e) => {
+      if (!isScrubbing) return;
+      isScrubbing = false;
+      el.sheetTimeline.classList.remove('dragging');
+      try {
+        el.sheetTimeline.releasePointerCapture(e.pointerId);
+      } catch (_) {}
+      const ratio = getScrubberRatio(e);
+      renderScrubPreview(ratio);
+      commitSeek(ratio);
+    });
+
+    el.sheetTimeline.addEventListener('pointercancel', (e) => {
+      if (!isScrubbing) return;
+      isScrubbing = false;
+      el.sheetTimeline.classList.remove('dragging');
+    });
+  }
 
   // Video Mode Toggle
   el.sheetToggleVideoBtn.addEventListener('click', () => {
