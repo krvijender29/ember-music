@@ -9,6 +9,8 @@ async function initApp() {
   try {
   // Initialize Core Player Engine
   const player = new MusicPlayer();
+  window.player = player;
+  window.emberPlayer = player;
 
   // Application State
   const state = {
@@ -36,6 +38,7 @@ async function initApp() {
 
     // Mini Player
     miniPlayer: document.getElementById('mini-player-bar'),
+    miniProgressLine: document.getElementById('mini-progress-line'),
     miniProgressFill: document.getElementById('mini-progress-fill'),
     miniTrackClickArea: document.getElementById('mini-track-click-area'),
     miniThumb: document.getElementById('mini-thumb'),
@@ -1261,54 +1264,121 @@ async function initApp() {
     }
   });
 
-  // Sheet Scrubber Dragging
-  function getScrubberRatio(e) {
-    const rect = el.sheetTimeline.getBoundingClientRect();
-    const clientX = e.clientX !== undefined ? e.clientX : (e.touches && e.touches[0] ? e.touches[0].clientX : 0);
-    return Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+  // Music Player Scrubber & Timeline Dragging
+  function getSafeDuration() {
+    if (typeof player.getDuration === 'function') {
+      const d = player.getDuration();
+      if (d > 0) return d;
+    }
+    return (player.duration && player.duration > 0) ? player.duration : 0;
   }
 
   function commitSeek(ratio) {
-    if (player.duration > 0) {
-      player.seekTo(player.duration * ratio);
+    const dur = getSafeDuration();
+    if (dur > 0) {
+      player.seekTo(dur * ratio);
+    } else if (typeof player.seekPercent === 'function') {
+      player.seekPercent(ratio * 100);
     }
   }
 
   function renderScrubPreview(ratio) {
-    const pct = ratio * 100;
+    const clampedRatio = Math.max(0, Math.min(1, ratio));
+    const pct = clampedRatio * 100;
     if (el.sheetTimelineFill) el.sheetTimelineFill.style.width = `${pct}%`;
     if (el.sheetTimelineHandle) el.sheetTimelineHandle.style.left = `${pct}%`;
     if (el.desktopTimelineFill) el.desktopTimelineFill.style.width = `${pct}%`;
     if (el.desktopTimelineHandle) el.desktopTimelineHandle.style.left = `${pct}%`;
-    if (player.duration > 0) {
-      const cur = player.duration * ratio;
+    if (el.miniProgressFill) el.miniProgressFill.style.width = `${pct}%`;
+
+    const dur = getSafeDuration();
+    if (dur > 0) {
+      const cur = dur * clampedRatio;
       if (el.sheetTimeCur) el.sheetTimeCur.textContent = formatTime(cur);
       if (el.desktopTimeCur) el.desktopTimeCur.textContent = formatTime(cur);
     }
   }
 
-  el.sheetTimeline.addEventListener('pointerdown', (e) => {
-    isScrubbing = true;
-    el.sheetTimeline.classList.add('dragging');
-    try { el.sheetTimeline.setPointerCapture(e.pointerId); } catch (_) {}
-    const ratio = getScrubberRatio(e);
-    renderScrubPreview(ratio);
+  function setupTimelineScrubber(barEl) {
+    if (!barEl) return;
+
+    function getRatio(e) {
+      const rect = barEl.getBoundingClientRect();
+      if (!rect.width || rect.width <= 0) return 0;
+      const clientX = (e.clientX !== undefined && e.clientX !== null)
+        ? e.clientX
+        : (e.touches && e.touches[0] ? e.touches[0].clientX : 0);
+      return Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    }
+
+    barEl.addEventListener('pointerdown', (e) => {
+      if (e.button !== undefined && e.button !== 0) return;
+      e.stopPropagation();
+      isScrubbing = true;
+      barEl.classList.add('dragging');
+      try { barEl.setPointerCapture(e.pointerId); } catch (_) {}
+      const ratio = getRatio(e);
+      renderScrubPreview(ratio);
+    });
+
+    barEl.addEventListener('pointermove', (e) => {
+      if (!isScrubbing) return;
+      e.stopPropagation();
+      const ratio = getRatio(e);
+      renderScrubPreview(ratio);
+    });
+
+    barEl.addEventListener('pointerup', (e) => {
+      if (!isScrubbing) return;
+      e.stopPropagation();
+      isScrubbing = false;
+      barEl.classList.remove('dragging');
+      try { barEl.releasePointerCapture(e.pointerId); } catch (_) {}
+      const ratio = getRatio(e);
+      renderScrubPreview(ratio);
+      commitSeek(ratio);
+    });
+
+    barEl.addEventListener('pointercancel', (e) => {
+      if (!isScrubbing) return;
+      isScrubbing = false;
+      barEl.classList.remove('dragging');
+      try { barEl.releasePointerCapture(e.pointerId); } catch (_) {}
+    });
+
+    // Support mouse wheel scrolling directly on the timeline bar!
+    barEl.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const dur = getSafeDuration();
+      if (dur <= 0) return;
+      const cur = (typeof player.getCurrentTime === 'function') ? player.getCurrentTime() : (player.currentTime || 0);
+      const delta = (e.deltaY < 0 || e.deltaX > 0) ? 5 : -5;
+      player.seekTo(cur + delta);
+    }, { passive: false });
+  }
+
+  // Setup all scrubber bars (sheet, desktop timeline, mini player progress)
+  setupTimelineScrubber(el.sheetTimeline);
+  setupTimelineScrubber(el.desktopTimeline);
+  setupTimelineScrubber(el.miniProgressLine);
+
+  window.addEventListener('pointerup', () => {
+    if (isScrubbing) {
+      isScrubbing = false;
+      if (el.sheetTimeline) el.sheetTimeline.classList.remove('dragging');
+      if (el.desktopTimeline) el.desktopTimeline.classList.remove('dragging');
+      if (el.miniProgressLine) el.miniProgressLine.classList.remove('dragging');
+    }
   });
 
-  el.sheetTimeline.addEventListener('pointermove', (e) => {
-    if (!isScrubbing) return;
-    const ratio = getScrubberRatio(e);
-    renderScrubPreview(ratio);
-  });
-
-  el.sheetTimeline.addEventListener('pointerup', (e) => {
-    if (!isScrubbing) return;
-    isScrubbing = false;
-    el.sheetTimeline.classList.remove('dragging');
-    try { el.sheetTimeline.releasePointerCapture(e.pointerId); } catch (_) {}
-    const ratio = getScrubberRatio(e);
-    renderScrubPreview(ratio);
-    commitSeek(ratio);
+  window.addEventListener('pointercancel', () => {
+    if (isScrubbing) {
+      isScrubbing = false;
+      if (el.sheetTimeline) el.sheetTimeline.classList.remove('dragging');
+      if (el.desktopTimeline) el.desktopTimeline.classList.remove('dragging');
+      if (el.miniProgressLine) el.miniProgressLine.classList.remove('dragging');
+    }
   });
 
   /* ==========================================================================
@@ -1391,39 +1461,6 @@ async function initApp() {
     });
   }
 
-  // Desktop Timeline Pointer Seeking
-  if (el.desktopTimeline) {
-    function getDesktopScrubberRatio(e) {
-      const rect = el.desktopTimeline.getBoundingClientRect();
-      const clientX = e.clientX !== undefined ? e.clientX : (e.touches && e.touches[0] ? e.touches[0].clientX : 0);
-      return Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-    }
-
-    el.desktopTimeline.addEventListener('pointerdown', (e) => {
-      isScrubbing = true;
-      el.desktopTimeline.classList.add('dragging');
-      try { el.desktopTimeline.setPointerCapture(e.pointerId); } catch (_) {}
-      const ratio = getDesktopScrubberRatio(e);
-      renderScrubPreview(ratio);
-    });
-
-    el.desktopTimeline.addEventListener('pointermove', (e) => {
-      if (!isScrubbing) return;
-      const ratio = getDesktopScrubberRatio(e);
-      renderScrubPreview(ratio);
-    });
-
-    el.desktopTimeline.addEventListener('pointerup', (e) => {
-      if (!isScrubbing) return;
-      isScrubbing = false;
-      el.desktopTimeline.classList.remove('dragging');
-      try { el.desktopTimeline.releasePointerCapture(e.pointerId); } catch (_) {}
-      const ratio = getDesktopScrubberRatio(e);
-      renderScrubPreview(ratio);
-      commitSeek(ratio);
-    });
-  }
-
   // Desktop Sidebar Navigation
   document.querySelectorAll('.sidebar-nav-item[data-tab]').forEach(item => {
     item.addEventListener('click', () => {
@@ -1477,13 +1514,48 @@ async function initApp() {
     });
   }
 
-  // Global Keyboard Shortcut: Ctrl+K / Cmd+K
+  // Global Keyboard Shortcuts (Hotkeys)
   window.addEventListener('keydown', (e) => {
+    // 1. Search shortcut Ctrl+K / Cmd+K
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
       e.preventDefault();
       switchTab('search', true);
       const sInput = document.getElementById('search-input') || el.desktopTopSearchInput;
       if (sInput) sInput.focus();
+      return;
+    }
+
+    // Do not intercept hotkeys if typing in an input, textarea or contenteditable
+    const activeEl = document.activeElement;
+    const isTyping = activeEl && (
+      activeEl.tagName === 'INPUT' || 
+      activeEl.tagName === 'TEXTAREA' || 
+      activeEl.isContentEditable
+    );
+    if (isTyping) return;
+
+    // 2. Spacebar: Play / Pause toggle
+    if (e.code === 'Space') {
+      e.preventDefault();
+      player.togglePlay();
+    }
+    // 3. ArrowLeft: Seek backward 5 seconds ("Scroll music back")
+    else if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      const dur = getSafeDuration();
+      if (dur > 0) {
+        const cur = (typeof player.getCurrentTime === 'function') ? player.getCurrentTime() : (player.currentTime || 0);
+        player.seekTo(cur - 5);
+      }
+    }
+    // 4. ArrowRight: Seek forward 5 seconds ("Scroll music forward")
+    else if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      const dur = getSafeDuration();
+      if (dur > 0) {
+        const cur = (typeof player.getCurrentTime === 'function') ? player.getCurrentTime() : (player.currentTime || 0);
+        player.seekTo(cur + 5);
+      }
     }
   });
 

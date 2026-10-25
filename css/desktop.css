@@ -769,7 +769,8 @@
     transition: height 0.15s ease;
   }
 
-  .desktop-timeline-bar:hover {
+  .desktop-timeline-bar:hover,
+  .desktop-timeline-bar.dragging {
     height: 7px;
   }
 

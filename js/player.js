@@ -57,21 +57,20 @@ class MusicPlayer {
       if (this.onStateChange) this.onStateChange({ isPlaying: this.isPlaying, isBuffering: true });
     });
 
-    a.addEventListener('timeupdate', () => {
-      const currentTime = a.currentTime || 0;
-      const duration = this.getDuration();
-      const percent = duration > 0 ? (currentTime / duration) * 100 : 0;
+    a.addEventListener('loadedmetadata', () => {
+      this._emitTimeUpdate();
+    });
 
-      if (this.onTimeUpdate) {
-        this.onTimeUpdate({
-          currentTime,
-          duration,
-          percent,
-          progress: percent,
-          currentTimeFormatted: this.formatTime(currentTime),
-          durationFormatted: this.formatTime(duration)
-        });
-      }
+    a.addEventListener('durationchange', () => {
+      this._emitTimeUpdate();
+    });
+
+    a.addEventListener('seeked', () => {
+      this._emitTimeUpdate();
+    });
+
+    a.addEventListener('timeupdate', () => {
+      this._emitTimeUpdate();
     });
 
     a.addEventListener('ended', () => {
@@ -267,8 +266,25 @@ class MusicPlayer {
     }
   }
 
+  _emitTimeUpdate() {
+    const currentTime = this.getCurrentTime();
+    const duration = this.getDuration();
+    const percent = duration > 0 ? (currentTime / duration) * 100 : 0;
+
+    if (this.onTimeUpdate) {
+      this.onTimeUpdate({
+        currentTime,
+        duration,
+        percent,
+        progress: percent,
+        currentTimeFormatted: this.formatTime(currentTime),
+        durationFormatted: this.formatTime(duration)
+      });
+    }
+  }
+
   getDuration() {
-    if (this.audio && !isNaN(this.audio.duration) && this.audio.duration > 0) {
+    if (this.audio && !isNaN(this.audio.duration) && isFinite(this.audio.duration) && this.audio.duration > 0) {
       return this.audio.duration;
     }
     return (this.currentTrack && this.currentTrack.durationSec) ? this.currentTrack.durationSec : 0;
@@ -278,11 +294,24 @@ class MusicPlayer {
     return (this.audio && !isNaN(this.audio.currentTime)) ? this.audio.currentTime : 0;
   }
 
+  get duration() {
+    return this.getDuration();
+  }
+
+  get currentTime() {
+    return this.getCurrentTime();
+  }
+
   seekTo(seconds) {
     if (this.audio) {
       const duration = this.getDuration();
       const targetSec = duration > 0 ? Math.max(0, Math.min(seconds, duration)) : Math.max(0, seconds);
-      this.audio.currentTime = targetSec;
+      try {
+        this.audio.currentTime = targetSec;
+      } catch (err) {
+        console.warn('[Ember] Seek error:', err);
+      }
+      this._emitTimeUpdate();
       if (this.isPlaying && this.audio.paused) {
         this.play();
       }

@@ -929,13 +929,20 @@ body::before {
   background: rgba(255, 255, 255, 0.12);
   cursor: pointer;
   touch-action: none;
+  z-index: 25;
+  transition: height 0.15s ease;
+}
+
+.mini-progress-line:hover,
+.mini-progress-line.dragging {
+  height: 6px;
 }
 
 .mini-progress-line::before {
   content: '';
   position: absolute;
-  top: -4px;
-  bottom: -8px;
+  top: -8px;
+  bottom: -12px;
   left: 0;
   right: 0;
   cursor: pointer;
@@ -947,6 +954,12 @@ body::before {
   background: #ffffff;
   box-shadow: 0 0 8px rgba(255, 255, 255, 0.8);
   pointer-events: none;
+  border-radius: 999px;
+}
+
+.mini-progress-line:hover .mini-progress-fill,
+.mini-progress-line.dragging .mini-progress-fill {
+  box-shadow: 0 0 12px rgba(255, 255, 255, 1);
 }
 
 .mini-track-left {
@@ -1141,6 +1154,12 @@ body::before {
   position: relative;
   touch-action: none;
   user-select: none;
+  transition: height 0.15s ease;
+}
+
+.sheet-timeline-bar:hover,
+.sheet-timeline-bar.dragging {
+  height: 9px;
 }
 
 /* Invisible expanded click & drag hit area (30px tall) */
