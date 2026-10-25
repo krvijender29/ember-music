@@ -589,7 +589,7 @@ async function initApp() {
       `;
 
       try {
-        const results = await YouTubeAPI.search(query, state.searchFilter);
+        const results = await YouTubeAPI.search(query, 24, state.searchFilter);
         if (!results || results.length === 0) {
           dynamicResults.innerHTML = `
             <div style="text-align:center; padding:40px 20px; color:var(--text-gray);">

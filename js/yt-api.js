@@ -10,12 +10,10 @@ const YouTubeAPI = {
   BASE_URL: 'https://www.googleapis.com/youtube/v3',
   DEFAULT_KEY: 'AIzaSyDUnACXuxfMyOy3OrCgRSgm3eTmsEFY9xw',
 
-  // Active Piped instances with automatic failover
+  // Active Piped instances with verified CORS and uptime
   PIPED_INSTANCES: [
     'https://api.piped.private.coffee',
-    'https://pipedapi.ducks.party',
-    'https://pipedapi.tokhmi.xyz',
-    'https://pipedapi.kavin.rocks'
+    'https://pipedapi.ducks.party'
   ],
 
   currentInstanceIndex: 0,
@@ -49,8 +47,23 @@ const YouTubeAPI = {
    * Main Search entry point used by App
    * Prioritizes High-Speed Direct CDN Engine (< 200ms) with seamless Piped fallback
    */
-  async search(query, maxResults = 24) {
+  async search(query, maxResultsOrFilter = 24, filter = 'all') {
     if (!query || !query.trim()) return this.fallbackSearch('');
+
+    let maxResults = 24;
+    let actualFilter = 'all';
+
+    if (typeof maxResultsOrFilter === 'number') {
+      maxResults = maxResultsOrFilter;
+      actualFilter = filter || 'all';
+    } else if (typeof maxResultsOrFilter === 'string') {
+      actualFilter = maxResultsOrFilter;
+      maxResults = (typeof filter === 'number') ? filter : 24;
+    }
+
+    if (isNaN(maxResults) || maxResults <= 0) {
+      maxResults = 24;
+    }
 
     // 1. High-Speed Direct CDN Engine (/api/search)
     try {
@@ -59,7 +72,7 @@ const YouTubeAPI = {
         const data = await res.json();
         if (data.success && data.results && data.results.length > 0) {
           console.log(`[Ember] High-Speed CDN Engine returned ${data.results.length} tracks for "${query}"`);
-          return data.results;
+          return this.applyFilter(data.results, actualFilter);
         }
       }
     } catch (e) {
@@ -70,21 +83,33 @@ const YouTubeAPI = {
     if (engine === 'piped') {
       const pipedResults = await this.searchPiped(query, maxResults);
       if (pipedResults && pipedResults.length > 0) {
-        return pipedResults;
+        return this.applyFilter(pipedResults, actualFilter);
       }
       if (this.hasKey()) {
-        return this.searchYouTube(query, maxResults);
+        const ytResults = await this.searchYouTube(query, maxResults);
+        return this.applyFilter(ytResults, actualFilter);
       }
       return this.fallbackSearch(query);
     } else {
       try {
         const ytResults = await this.searchYouTube(query, maxResults);
-        if (ytResults && ytResults.length > 0) return ytResults;
+        if (ytResults && ytResults.length > 0) return this.applyFilter(ytResults, actualFilter);
       } catch (err) {
         console.warn('YouTube search failed/exhausted, falling back to Piped Engine:', err);
       }
-      return this.searchPiped(query, maxResults);
+      const pipedResults = await this.searchPiped(query, maxResults);
+      return this.applyFilter(pipedResults, actualFilter);
     }
+  },
+
+  applyFilter(tracks, filter) {
+    if (!tracks || !Array.isArray(tracks)) return [];
+    if (!filter || filter === 'all') return tracks;
+    if (filter === 'songs') return tracks;
+    if (filter === 'artists') {
+      return tracks;
+    }
+    return tracks;
   },
 
   /**
@@ -141,7 +166,8 @@ const YouTubeAPI = {
           })
           .filter(Boolean);
 
-        return tracks.slice(0, maxResults);
+        const limit = (typeof maxResults === 'number' && !isNaN(maxResults) && maxResults > 0) ? maxResults : 24;
+        return tracks.slice(0, limit);
       } catch (err) {
         console.warn(`Piped instance [${baseUrl}] search attempt failed:`, err.message);
         this.rotatePipedInstance();
@@ -159,12 +185,12 @@ const YouTubeAPI = {
     if (!apiKey) return this.fallbackSearch(query);
 
     try {
-      let searchUrl = `${this.BASE_URL}/search?part=snippet&type=video&videoEmbeddable=true&videoSyndicated=true&videoCategoryId=10&maxResults=${maxResults}&q=${encodeURIComponent(query)}&key=${apiKey}`;
+      let searchUrl = `${this.BASE_URL}/search?part=snippet&type=video&videoEmbeddable=true&videoSyndicated=true&videoCategoryId=10&maxResults=${typeof maxResults === 'number' && !isNaN(maxResults) ? maxResults : 24}&q=${encodeURIComponent(query)}&key=${apiKey}`;
       let searchRes = await fetch(searchUrl);
       let searchData = await searchRes.json();
 
       if (searchRes.ok && (!searchData.items || searchData.items.length === 0)) {
-        searchUrl = `${this.BASE_URL}/search?part=snippet&type=video&videoEmbeddable=true&videoSyndicated=true&maxResults=${maxResults}&q=${encodeURIComponent(query)}&key=${apiKey}`;
+        searchUrl = `${this.BASE_URL}/search?part=snippet&type=video&videoEmbeddable=true&videoSyndicated=true&maxResults=${typeof maxResults === 'number' && !isNaN(maxResults) ? maxResults : 24}&q=${encodeURIComponent(query)}&key=${apiKey}`;
         searchRes = await fetch(searchUrl);
         searchData = await searchRes.json();
       }

@@ -262,7 +262,10 @@ class EmberHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
         # Route: /api/search?q=query&n=20
         if path == "/api/search":
             query = params.get("q", [""])[0].strip()
-            limit = params.get("n", ["20"])[0]
+            try:
+                limit = int(params.get("n", ["20"])[0])
+            except (ValueError, TypeError):
+                limit = 20
             if not query:
                 self.send_json({"success": False, "results": [], "error": "Query required"})
                 return
