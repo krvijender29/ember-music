@@ -502,9 +502,9 @@ async function initApp() {
     el.viewport.innerHTML = `
       <div class="search-screen-container">
         <!-- Search Input Bar -->
-        <div class="search-input-wrapper">
+        <div class="ember-search-box search-input-wrapper">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <input type="text" class="search-main-input" id="search-input" placeholder="Search songs, artists, playlists..." value="${escapeHtml(state.searchQuery)}">
+          <input type="text" class="ember-search-input search-main-input" id="search-input" placeholder="Search songs, artists, playlists..." value="${escapeHtml(state.searchQuery)}">
           <button class="search-clear-btn" id="search-clear-btn" style="display:${state.searchQuery ? 'block' : 'none'};">✕</button>
         </div>
 
@@ -527,6 +527,11 @@ async function initApp() {
     const clearBtn = document.getElementById('search-clear-btn');
     const dynamicResults = document.getElementById('search-dynamic-results');
 
+    // Keep desktop top search bar in sync
+    if (el.desktopTopSearchInput && el.desktopTopSearchInput.value !== state.searchQuery) {
+      el.desktopTopSearchInput.value = state.searchQuery;
+    }
+
     if (autoFocus && searchInput) {
       setTimeout(() => searchInput.focus(), 100);
     }
@@ -547,7 +552,8 @@ async function initApp() {
     if (clearBtn) {
       clearBtn.addEventListener('click', () => {
         state.searchQuery = '';
-        searchInput.value = '';
+        if (searchInput) searchInput.value = '';
+        if (el.desktopTopSearchInput) el.desktopTopSearchInput.value = '';
         clearBtn.style.display = 'none';
         dynamicResults.innerHTML = renderBrowseGenresGrid();
         bindGenreCards();
@@ -559,6 +565,9 @@ async function initApp() {
       searchInput.addEventListener('input', (e) => {
         const query = e.target.value;
         state.searchQuery = query;
+        if (el.desktopTopSearchInput && el.desktopTopSearchInput.value !== query) {
+          el.desktopTopSearchInput.value = query;
+        }
         if (clearBtn) clearBtn.style.display = query ? 'block' : 'none';
 
         if (state.searchDebounceTimer) clearTimeout(state.searchDebounceTimer);
@@ -569,36 +578,68 @@ async function initApp() {
             dynamicResults.innerHTML = renderBrowseGenresGrid();
             bindGenreCards();
           }
-        }, 350);
+        }, 300);
       });
     }
 
+    function executeSearch(query) {
+      state.searchQuery = query;
+      if (searchInput) searchInput.value = query;
+      if (el.desktopTopSearchInput) el.desktopTopSearchInput.value = query;
+      if (clearBtn) clearBtn.style.display = 'block';
+      triggerSearch(query);
+    }
+
     function renderBrowseGenresGrid() {
-      return `
-        <div class="section-title-row" style="margin-bottom:14px;">
+      const trending = (typeof TRENDING_SEARCHES !== 'undefined' && Array.isArray(TRENDING_SEARCHES)) ? TRENDING_SEARCHES : [];
+      const genres = (typeof GENRE_CARDS !== 'undefined' && Array.isArray(GENRE_CARDS)) ? GENRE_CARDS : [];
+
+      const trendingHtml = trending.length > 0 ? `
+        <div class="section-title-row" style="margin-bottom:12px;">
+          <h3>Trending Searches</h3>
+        </div>
+        <div class="trending-searches-list">
+          ${trending.map(t => `
+            <div class="trending-item-row" data-trend="${escapeHtml(t)}">
+              <div class="trending-left">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <span>${escapeHtml(t)}</span>
+              </div>
+              <svg class="arrow-right" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+            </div>
+          `).join('')}
+        </div>
+      ` : '';
+
+      const genresHtml = genres.length > 0 ? `
+        <div class="section-title-row" style="margin-bottom:14px; margin-top:22px;">
           <h3>Explore Moods &amp; Genres</h3>
         </div>
         <div class="browse-genres-grid">
-          ${GENRE_CARDS.map(g => `
+          ${genres.map(g => `
             <div class="genre-card" data-genre-query="${escapeHtml(g.query)}" style="background:${escapeHtml(g.color)};">
               <span class="genre-card-title">${escapeHtml(g.title)}</span>
               <img class="genre-card-art" src="${escapeHtml(g.art)}" alt="${escapeHtml(g.title)}" loading="lazy">
             </div>
           `).join('')}
         </div>
-      `;
+      ` : '';
+
+      return trendingHtml + genresHtml;
     }
 
     function bindGenreCards() {
       document.querySelectorAll('.genre-card').forEach(card => {
         card.addEventListener('click', () => {
           const q = card.dataset.genreQuery;
-          if (q && searchInput) {
-            searchInput.value = q;
-            state.searchQuery = q;
-            if (clearBtn) clearBtn.style.display = 'block';
-            triggerSearch(q);
-          }
+          if (q) executeSearch(q);
+        });
+      });
+
+      document.querySelectorAll('.trending-item-row').forEach(row => {
+        row.addEventListener('click', () => {
+          const q = row.dataset.trend;
+          if (q) executeSearch(q);
         });
       });
     }
@@ -613,7 +654,11 @@ async function initApp() {
       `;
 
       try {
-        const results = await YouTubeAPI.search(query, 24, state.searchFilter);
+        let results = await YouTubeAPI.search(query, 24, state.searchFilter);
+        if (!results || results.length === 0) {
+          results = YouTubeAPI.fallbackSearch(query);
+        }
+
         if (!results || results.length === 0) {
           dynamicResults.innerHTML = `
             <div style="text-align:center; padding:40px 20px; color:var(--text-gray);">
@@ -636,12 +681,27 @@ async function initApp() {
 
         bindSongRows(document.getElementById('search-results-list'), results);
       } catch (err) {
-        dynamicResults.innerHTML = `
-          <div style="text-align:center; padding:40px 20px; color:var(--text-gray);">
-            <p style="font-size:0.9rem; color:#ff6666; margin-bottom:6px;">Unable to reach search stream</p>
-            <p style="font-size:0.75rem;">${escapeHtml(err.message)}</p>
-          </div>
-        `;
+        console.warn('[Ember Search] Live search failed, using fallback catalog:', err);
+        const fallback = YouTubeAPI.fallbackSearch(query);
+        if (fallback && fallback.length > 0) {
+          dynamicResults.innerHTML = `
+            <div class="section-title-row" style="margin-bottom:12px;">
+              <h3>Results</h3>
+              <span style="font-size:0.75rem; color:var(--text-dim);">${fallback.length} found</span>
+            </div>
+            <div class="song-list-container" id="search-results-list">
+              ${fallback.map((track, i) => createSongRowHtml(track, i)).join('')}
+            </div>
+          `;
+          bindSongRows(document.getElementById('search-results-list'), fallback);
+        } else {
+          dynamicResults.innerHTML = `
+            <div style="text-align:center; padding:40px 20px; color:var(--text-gray);">
+              <p style="font-size:0.9rem; color:#ff6666; margin-bottom:6px;">Unable to reach search stream</p>
+              <p style="font-size:0.75rem;">${escapeHtml(err.message)}</p>
+            </div>
+          `;
+        }
       }
     }
 
@@ -1502,13 +1562,38 @@ async function initApp() {
     });
   }
   if (el.desktopTopSearchInput) {
-    el.desktopTopSearchInput.addEventListener('focus', () => switchTab('search'));
+    el.desktopTopSearchInput.addEventListener('focus', () => {
+      if (state.currentTab !== 'search') {
+        switchTab('search', false);
+      }
+    });
+
+    el.desktopTopSearchInput.addEventListener('input', (e) => {
+      const q = e.target.value;
+      state.searchQuery = q;
+      const sInput = document.getElementById('search-input');
+      if (sInput && sInput.value !== q) sInput.value = q;
+      const cBtn = document.getElementById('search-clear-btn');
+      if (cBtn) cBtn.style.display = q ? 'block' : 'none';
+
+      if (state.searchDebounceTimer) clearTimeout(state.searchDebounceTimer);
+      state.searchDebounceTimer = setTimeout(() => {
+        if (state.currentTab !== 'search') {
+          switchTab('search', false);
+        } else {
+          renderSearchView();
+        }
+      }, 300);
+    });
+
     el.desktopTopSearchInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         const q = el.desktopTopSearchInput.value.trim();
-        if (q) {
-          state.searchQuery = q;
-          switchTab('search', true);
+        state.searchQuery = q;
+        if (state.currentTab !== 'search') {
+          switchTab('search', false);
+        } else {
+          renderSearchView();
         }
       }
     });

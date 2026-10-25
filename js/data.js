@@ -231,3 +231,16 @@ const TRENDING_SEARCHES = [
   "Atif Aslam",
   "Taylor Swift"
 ];
+
+const GENRE_CARDS = [
+  { title: "Pop", query: "Pop hits", color: "linear-gradient(135deg, #ec407a, #c2185b)", art: "assets/images/ember_rose.jpg" },
+  { title: "Hip Hop", query: "Hip Hop", color: "linear-gradient(135deg, #ff7043, #e64a19)", art: "https://i.ytimg.com/vi/fHI8X483mZ4/hqdefault.jpg" },
+  { title: "Lo-Fi", query: "Lofi Beats", color: "linear-gradient(135deg, #5c6bc0, #303f9f)", art: "assets/images/ember_banner.jpg" },
+  { title: "R&B", query: "R&B hits", color: "linear-gradient(135deg, #ab47bc, #7b1fa2)", art: "assets/images/ember_midnight.jpg" },
+  { title: "Electronic", query: "Electronic EDM", color: "linear-gradient(135deg, #26c6da, #0097a7)", art: "assets/images/ember_drive.jpg" },
+  { title: "Rock", query: "Classic Rock", color: "linear-gradient(135deg, #ef5350, #d32f2f)", art: "https://i.ytimg.com/vi/vbvyNnw8Qjg/hqdefault.jpg" },
+  { title: "Indie", query: "Indie Alternative", color: "linear-gradient(135deg, #66bb6a, #388e3c)", art: "https://i.ytimg.com/vi/RBumgq5yVrA/hqdefault.jpg" },
+  { title: "Punjabi", query: "Punjabi Hits", color: "linear-gradient(135deg, #ffa726, #f57c00)", art: "https://i.ytimg.com/vi/jFGKJBPFdUA/hqdefault.jpg" },
+  { title: "Ambient", query: "Ambient Chill", color: "linear-gradient(135deg, #78909c, #455a64)", art: "https://i.ytimg.com/vi/36YnV9STBqc/hqdefault.jpg" },
+  { title: "Bollywood", query: "Bollywood Hits", color: "linear-gradient(135deg, #ba68c8, #6a1b9a)", art: "https://i.ytimg.com/vi/ApXoWvfEYVU/hqdefault.jpg" }
+];

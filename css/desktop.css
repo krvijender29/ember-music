@@ -589,6 +589,21 @@
     gap: 12px !important;
   }
 
+  /* Browse Genres Grid on Desktop */
+  .browse-genres-grid {
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)) !important;
+    gap: 16px !important;
+  }
+
+  .genre-card {
+    height: 110px !important;
+  }
+
+  .genre-card-art {
+    width: 68px !important;
+    height: 68px !important;
+  }
+
   /* Playlist View Desktop Hero Header */
   .playlist-hero-header {
     flex-direction: row !important;

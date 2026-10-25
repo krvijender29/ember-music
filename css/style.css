@@ -629,6 +629,55 @@ body::before {
   color: var(--text-dim);
 }
 
+/* Browse Genres Grid */
+.browse-genres-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  margin-bottom: 28px;
+}
+
+.genre-card {
+  position: relative;
+  height: 94px;
+  border-radius: 14px;
+  padding: 14px 16px;
+  overflow: hidden;
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.22s ease;
+}
+
+.genre-card:hover {
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.7);
+}
+
+.genre-card-title {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: #ffffff;
+  position: relative;
+  z-index: 2;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+  display: block;
+}
+
+.genre-card-art {
+  position: absolute;
+  right: -8px;
+  bottom: -8px;
+  width: 58px;
+  height: 58px;
+  border-radius: 8px;
+  transform: rotate(24deg);
+  box-shadow: -2px 4px 10px rgba(0, 0, 0, 0.5);
+  object-fit: cover;
+  pointer-events: none;
+}
+
 /* Song Item Rows (Search Results & Playlists) */
 .song-list-container {
   display: flex;
