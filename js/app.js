@@ -1966,7 +1966,7 @@ async function initApp() {
   // Sheet Controls
   el.sheetPlayPauseBtn.addEventListener('click', () => player.togglePlay());
   el.sheetNextBtn.addEventListener('click', () => player.next());
-  el.sheetPrevBtn.addEventListener('click', () => player.prev());
+  el.sheetPrevBtn.addEventListener('click', () => player.previous(true));
 
   el.sheetShuffleBtn.addEventListener('click', () => {
     const isShuffle = player.toggleShuffle();
@@ -2138,7 +2138,7 @@ async function initApp() {
   if (el.desktopPrevBtn) {
     el.desktopPrevBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      player.prev();
+      player.previous(true);
     });
   }
   if (el.desktopShuffleBtn) {
@@ -2364,6 +2364,16 @@ async function initApp() {
     if (e.code === 'Space') {
       e.preventDefault();
       player.togglePlay();
+    }
+    // Previous track shortcut: Shift+ArrowLeft or 'p'
+    else if ((e.shiftKey && e.key === 'ArrowLeft') || e.key.toLowerCase() === 'p') {
+      e.preventDefault();
+      player.previous(true);
+    }
+    // Next track shortcut: Shift+ArrowRight or 'n'
+    else if ((e.shiftKey && e.key === 'ArrowRight') || e.key.toLowerCase() === 'n') {
+      e.preventDefault();
+      player.next();
     }
     // 3. ArrowLeft: Seek backward 5 seconds ("Scroll music back")
     else if (e.key === 'ArrowLeft') {

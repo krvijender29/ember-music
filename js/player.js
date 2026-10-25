@@ -248,22 +248,25 @@ class MusicPlayer {
     }
   }
 
-  previous() {
+  previous(forceTrackChange = true) {
     if (this.queue.length === 0) return;
 
-    // If more than 3 seconds played, restart current track
-    if (this.audio && this.audio.currentTime > 3) {
+    // If more than 3 seconds played and caller didn't force track change, restart current track
+    if (!forceTrackChange && this.audio && this.audio.currentTime > 3) {
       this.seekTo(0);
       return;
     }
 
     if (this.queueIndex > 0) {
       this.queueIndex--;
-      this.loadTrack(this.queue[this.queueIndex], true);
     } else {
       this.queueIndex = this.queue.length - 1;
-      this.loadTrack(this.queue[this.queueIndex], true);
     }
+    this.loadTrack(this.queue[this.queueIndex], true);
+  }
+
+  prev(forceTrackChange = true) {
+    this.previous(forceTrackChange);
   }
 
   _emitTimeUpdate() {
