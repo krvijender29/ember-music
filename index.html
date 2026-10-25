@@ -405,7 +405,8 @@
 
     <!-- Music Taste Onboarding Modal (Supabase user_preferences) -->
     <div class="ember-modal-backdrop" id="onboarding-modal" style="display:none;">
-      <div class="ember-modal-card onboarding-card">
+      <div class="ember-modal-card onboarding-card" style="position:relative;">
+        <button class="auth-modal-close-btn" id="btn-close-onboarding" title="Close" style="position:absolute; top:16px; right:16px; background:none; border:none; color:var(--text-gray); font-size:18px; cursor:pointer;">✕</button>
         <h3>Tune Your Soundscape</h3>
         <p style="font-size:0.75rem; color:var(--text-gray); margin-bottom:14px;">Select your favorite genres and artists to power personalized daily mixes.</p>
 

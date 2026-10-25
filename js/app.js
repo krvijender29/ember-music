@@ -139,6 +139,7 @@ async function initApp() {
 
     // Onboarding Modal
     onboardingModal: document.getElementById('onboarding-modal'),
+    btnCloseOnboarding: document.getElementById('btn-close-onboarding'),
     onboardingGenrePills: document.getElementById('onboarding-genre-pills'),
     onboardingArtistInput: document.getElementById('onboarding-artist-input'),
     onboardingArtistTags: document.getElementById('onboarding-artist-tags'),
@@ -2235,19 +2236,43 @@ async function initApp() {
     }
   });
 
-  el.btnSkipOnboarding.addEventListener('click', () => {
+  if (el.btnCloseOnboarding) {
+    el.btnCloseOnboarding.addEventListener('click', () => {
+      el.onboardingModal.style.display = 'none';
+      const user = AuthManager.getCurrentUser();
+      if (user?.uid) {
+        localStorage.setItem(`ember_onboarding_dismissed_${user.uid}`, 'true');
+      }
+    });
+  }
+
+  el.btnSkipOnboarding.addEventListener('click', async () => {
     el.onboardingModal.style.display = 'none';
-    showToast('Skipped for now. You can tune your taste anytime in Profile.', 'info');
+    const user = AuthManager.getCurrentUser();
+    if (user?.uid) {
+      localStorage.setItem(`ember_onboarding_dismissed_${user.uid}`, 'true');
+      try {
+        await DbManager.savePreferences(user.uid, {
+          favorite_genres: ['All'],
+          favorite_artists: []
+        });
+      } catch (_) {}
+    }
+    showToast('Preferences set. You can customize anytime in Profile.', 'info');
   });
 
   el.btnSaveOnboarding.addEventListener('click', async () => {
     const user = AuthManager.getCurrentUser();
+    const selected = Array.from(state.selectedGenres);
     const prefs = {
-      favorite_genres: Array.from(state.selectedGenres),
+      favorite_genres: selected.length > 0 ? selected : ['All'],
       favorite_artists: Array.from(state.selectedArtists)
     };
 
-    await DbManager.savePreferences(user?.uid, prefs);
+    if (user?.uid) {
+      localStorage.setItem(`ember_onboarding_dismissed_${user.uid}`, 'true');
+      await DbManager.savePreferences(user.uid, prefs);
+    }
     el.onboardingModal.style.display = 'none';
     showToast('Music preferences saved!', 'success');
 
@@ -2398,8 +2423,10 @@ async function initApp() {
       const { isNewUser } = await DbManager.ensureProfile(user);
       const prefs = await DbManager.getPreferences(user.uid);
 
-      // Offer first-time onboarding if new or no genres chosen
-      if (isNewUser || (!prefs.favorite_genres || prefs.favorite_genres.length === 0)) {
+      // Only offer taste onboarding once upon initial registration if not previously dismissed
+      const isDismissed = localStorage.getItem(`ember_onboarding_dismissed_${user.uid}`) === 'true';
+      const hasGenres = prefs && Array.isArray(prefs.favorite_genres) && prefs.favorite_genres.length > 0;
+      if (isNewUser && !isDismissed && !hasGenres) {
         openOnboardingModal(prefs);
       }
 
