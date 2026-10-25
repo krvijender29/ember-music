@@ -1516,7 +1516,7 @@ async function initApp() {
      ========================================================================== */
   let authMode = 'login'; // 'login' | 'signup'
 
-  function formatAuthErrorMessage(err) {
+  function formatAuthErrorMessage(err, isGoogle = false) {
     if (!err) return 'An unexpected authentication error occurred.';
     const code = err.code || '';
     switch (code) {
@@ -1524,7 +1524,11 @@ async function initApp() {
         return `Domain "${window.location.hostname || 'localhost'}" is not authorized! In Firebase Console > Authentication > Settings > Authorized Domains, add "${window.location.hostname || 'localhost'}".`;
       case 'auth/operation-not-allowed':
       case 'auth/configuration-not-found':
-        return 'Google Sign-in is not enabled in your Firebase project! In Firebase Console > Authentication > Sign-in method, enable Google and select a Support Email.';
+        if (isGoogle) {
+          return 'Google Sign-In is not enabled in your Firebase project! In Firebase Console > Authentication > Sign-in method, click Google, toggle Enable, select a Project support email, and click Save.';
+        } else {
+          return 'Email/Password sign-in is not enabled in your Firebase project! In Firebase Console > Authentication > Sign-in method, click "Email/Password", toggle Enable, and click Save.';
+        }
       case 'auth/popup-blocked':
         return 'Sign-in popup was blocked by your browser. Please allow popups for this site or use redirect.';
       case 'auth/popup-closed-by-user':
@@ -1643,7 +1647,7 @@ async function initApp() {
       }
     } catch (err) {
       console.error('[Google Auth Error]', err);
-      const msg = formatAuthErrorMessage(err);
+      const msg = formatAuthErrorMessage(err, true);
       showAuthAlert(msg, 'error');
 
       if (err.message && err.message.includes('FIREBASE_NOT_CONFIGURED')) {
@@ -1684,7 +1688,7 @@ async function initApp() {
         showToast(`Account created! Welcome, ${user.displayName}.`, 'success');
       }
     } catch (err) {
-      const msg = formatAuthErrorMessage(err);
+      const msg = formatAuthErrorMessage(err, false);
       showAuthAlert(msg);
     } finally {
       el.btnAuthSubmit.disabled = false;
