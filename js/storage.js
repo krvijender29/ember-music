@@ -12,7 +12,8 @@ const StorageManager = {
     SETTINGS: 'aurawave_player_settings',
     STREAMING_ENGINE: 'aurawave_streaming_engine',
     PIPED_INSTANCE: 'aurawave_piped_instance',
-    ALT_CACHE: 'aurawave_alt_track_cache'
+    ALT_CACHE: 'aurawave_alt_track_cache',
+    SEARCH_HISTORY: 'ember_search_history'
   },
 
   DEFAULT_API_KEY: 'AIzaSyDUnACXuxfMyOy3OrCgRSgm3eTmsEFY9xw',
@@ -182,6 +183,67 @@ const StorageManager = {
       return true;
     }
     return false;
+  },
+
+  setPlaylists(playlists) {
+    try {
+      localStorage.setItem(this.KEYS.PLAYLISTS, JSON.stringify(playlists || []));
+    } catch (e) {}
+  },
+
+  renamePlaylist(playlistId, newName) {
+    const playlists = this.getPlaylists();
+    const pl = playlists.find(p => p.id === playlistId);
+    if (pl) {
+      pl.name = newName;
+      localStorage.setItem(this.KEYS.PLAYLISTS, JSON.stringify(playlists));
+      return pl;
+    }
+    return null;
+  },
+
+  deletePlaylist(playlistId) {
+    const playlists = this.getPlaylists().filter(p => p.id !== playlistId);
+    localStorage.setItem(this.KEYS.PLAYLISTS, JSON.stringify(playlists));
+  },
+
+  // Search History (Local system & mobile caching)
+  getSearchHistory() {
+    try {
+      const data = localStorage.getItem(this.KEYS.SEARCH_HISTORY);
+      return data ? JSON.parse(data) : [];
+    } catch (e) {
+      return [];
+    }
+  },
+
+  setSearchHistory(queries) {
+    try {
+      const clean = Array.isArray(queries)
+        ? queries.map(q => typeof q === 'string' ? q.trim() : (q && q.query ? q.query.trim() : '')).filter(Boolean)
+        : [];
+      localStorage.setItem(this.KEYS.SEARCH_HISTORY, JSON.stringify(clean.slice(0, 25)));
+    } catch (e) {}
+  },
+
+  addSearchHistory(query) {
+    if (!query || !query.trim()) return;
+    const q = query.trim();
+    let list = this.getSearchHistory().filter(item => item.toLowerCase() !== q.toLowerCase());
+    list.unshift(q);
+    if (list.length > 25) list.pop();
+    localStorage.setItem(this.KEYS.SEARCH_HISTORY, JSON.stringify(list));
+  },
+
+  removeSearchHistory(query) {
+    if (!query) return;
+    const q = query.trim().toLowerCase();
+    const list = this.getSearchHistory().filter(item => item.toLowerCase() !== q);
+    localStorage.setItem(this.KEYS.SEARCH_HISTORY, JSON.stringify(list));
+  },
+
+  clearSearchHistory() {
+    localStorage.removeItem(this.KEYS.SEARCH_HISTORY);
   },
 
   // Player Settings (volume, repeat, shuffle)

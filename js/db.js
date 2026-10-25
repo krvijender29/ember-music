@@ -387,7 +387,7 @@ const DbManager = {
       return StorageManager.getPlaylists();
     }
 
-    return (playlists || []).map(pl => ({
+    const mapped = (playlists || []).map(pl => ({
       id: pl.id,
       name: pl.name,
       description: pl.description || '',
@@ -402,6 +402,10 @@ const DbManager = {
           thumbnail: s.artwork_url
         }))
     }));
+
+    // Cache on system/mobile for instant & offline access
+    StorageManager.setPlaylists(mapped);
+    return mapped;
   },
 
   async createPlaylist(userId, name, description = '') {
@@ -427,20 +431,24 @@ const DbManager = {
       .single();
 
     if (error) throw error;
-    return {
+    const newPl = {
       id: data.id,
       name: data.name,
       description: data.description,
       tracks: [],
       createdAt: data.created_at
     };
+    const local = StorageManager.getPlaylists();
+    local.unshift(newPl);
+    StorageManager.setPlaylists(local);
+    return newPl;
   },
 
   async renamePlaylist(playlistId, newName) {
+    StorageManager.renamePlaylist(playlistId, newName);
+
     const client = this.getClient();
     if (!client) {
-      const pl = StorageManager.getPlaylists().find(p => p.id === playlistId);
-      if (pl) pl.name = newName;
       return true;
     }
 
@@ -454,10 +462,10 @@ const DbManager = {
   },
 
   async deletePlaylist(playlistId) {
+    StorageManager.deletePlaylist(playlistId);
+
     const client = this.getClient();
     if (!client) {
-      const playlists = StorageManager.getPlaylists().filter(p => p.id !== playlistId);
-      localStorage.setItem(StorageManager.KEYS.PLAYLISTS, JSON.stringify(playlists));
       return true;
     }
 
@@ -471,9 +479,11 @@ const DbManager = {
   },
 
   async addTrackToPlaylist(playlistId, track) {
+    StorageManager.addTrackToPlaylist(playlistId, track);
+
     const client = this.getClient();
     if (!client) {
-      return StorageManager.addTrackToPlaylist(playlistId, track);
+      return true;
     }
 
     // Get current max position
@@ -508,9 +518,11 @@ const DbManager = {
   },
 
   async removeTrackFromPlaylist(playlistId, trackId) {
+    StorageManager.removeTrackFromPlaylist(playlistId, trackId);
+
     const client = this.getClient();
     if (!client) {
-      return StorageManager.removeTrackFromPlaylist(playlistId, trackId);
+      return true;
     }
 
     const { error } = await client
@@ -521,6 +533,95 @@ const DbManager = {
 
     if (error) throw error;
     return true;
+  },
+
+  // ----------------------------------------------------------------------------
+  // Search History (Supabase PostgreSQL + System/Mobile Cache)
+  // ----------------------------------------------------------------------------
+  async getSearchHistory(userId) {
+    if (!userId) return StorageManager.getSearchHistory();
+    const client = this.getClient();
+    if (!client) return StorageManager.getSearchHistory();
+
+    try {
+      const { data, error } = await client
+        .from('search_history')
+        .select('query, searched_at')
+        .eq('user_id', userId)
+        .order('searched_at', { ascending: false })
+        .limit(20);
+
+      if (error) {
+        console.warn('[DbManager] getSearchHistory fallback:', error.message);
+        return StorageManager.getSearchHistory();
+      }
+
+      const queries = (data || []).map(d => d.query).filter(Boolean);
+      StorageManager.setSearchHistory(queries);
+      return queries;
+    } catch (e) {
+      console.warn('[DbManager] getSearchHistory error:', e.message);
+      return StorageManager.getSearchHistory();
+    }
+  },
+
+  async addSearchHistory(userId, query) {
+    if (!query || !query.trim()) return;
+    const cleanQuery = query.trim();
+    StorageManager.addSearchHistory(cleanQuery);
+
+    if (!userId) return;
+    const client = this.getClient();
+    if (!client) return;
+
+    try {
+      await client
+        .from('search_history')
+        .upsert({
+          user_id: userId,
+          query: cleanQuery,
+          searched_at: new Date().toISOString()
+        }, { onConflict: 'user_id, query' });
+    } catch (e) {
+      console.warn('[DbManager] addSearchHistory error:', e.message);
+    }
+  },
+
+  async removeSearchHistory(userId, query) {
+    if (!query) return;
+    const cleanQuery = query.trim();
+    StorageManager.removeSearchHistory(cleanQuery);
+
+    if (!userId) return;
+    const client = this.getClient();
+    if (!client) return;
+
+    try {
+      await client
+        .from('search_history')
+        .delete()
+        .eq('user_id', userId)
+        .eq('query', cleanQuery);
+    } catch (e) {
+      console.warn('[DbManager] removeSearchHistory error:', e.message);
+    }
+  },
+
+  async clearSearchHistory(userId) {
+    StorageManager.clearSearchHistory();
+
+    if (!userId) return;
+    const client = this.getClient();
+    if (!client) return;
+
+    try {
+      await client
+        .from('search_history')
+        .delete()
+        .eq('user_id', userId);
+    } catch (e) {
+      console.warn('[DbManager] clearSearchHistory error:', e.message);
+    }
   },
 
   // ----------------------------------------------------------------------------

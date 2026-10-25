@@ -587,6 +587,69 @@ body::before {
   box-shadow: 0 4px 18px rgba(255, 255, 255, 0.22);
 }
 
+/* Recent Search History Chips */
+.recent-searches-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 24px;
+}
+
+.recent-search-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-card);
+  border-radius: 20px;
+  padding: 6px 12px 6px 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.recent-search-chip:hover {
+  background: var(--bg-card-hover);
+  border-color: rgba(255, 255, 255, 0.3);
+  transform: translateY(-1px);
+}
+
+.recent-chip-text {
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--text-white);
+}
+
+.btn-remove-search {
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  font-size: 0.8rem;
+  padding: 2px 4px;
+  cursor: pointer;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+  line-height: 1;
+}
+
+.btn-remove-search:hover {
+  color: #ff5252;
+  background: rgba(255, 82, 82, 0.15);
+}
+
+.btn-clear-history {
+  font-size: 0.74rem;
+  color: var(--text-dim);
+  transition: color 0.2s ease;
+}
+
+.btn-clear-history:hover {
+  color: #ff5252;
+}
+
 .trending-searches-list {
   display: flex;
   flex-direction: column;
