@@ -129,6 +129,15 @@ class MusicPlayer {
   async loadTrack(track, autoPlay = true) {
     if (!track) return;
 
+    if (typeof AuthManager !== 'undefined' && AuthManager.isGuest()) {
+      this.pause();
+      if (this.audio) this.audio.src = '';
+      if (typeof window.openEmberAuthGate === 'function') {
+        window.openEmberAuthGate('🔒 Sign in or create an account to stream music.');
+      }
+      return;
+    }
+
     this.currentTrack = track;
     StorageManager.addRecentTrack(track);
 
@@ -172,6 +181,15 @@ class MusicPlayer {
   }
 
   play() {
+    if (typeof AuthManager !== 'undefined' && AuthManager.isGuest()) {
+      this.pause();
+      if (this.audio) this.audio.src = '';
+      if (typeof window.openEmberAuthGate === 'function') {
+        window.openEmberAuthGate('🔒 Sign in or create an account to stream music.');
+      }
+      return;
+    }
+
     if (this.audio && this.audio.src) {
       const p = this.audio.play();
       if (p !== undefined) {
@@ -193,6 +211,15 @@ class MusicPlayer {
   }
 
   togglePlay() {
+    if (typeof AuthManager !== 'undefined' && AuthManager.isGuest()) {
+      this.pause();
+      if (this.audio) this.audio.src = '';
+      if (typeof window.openEmberAuthGate === 'function') {
+        window.openEmberAuthGate('🔒 Sign in or create an account to stream music.');
+      }
+      return;
+    }
+
     if (this.isPlaying) {
       this.pause();
     } else {
@@ -331,6 +358,14 @@ class MusicPlayer {
 
   setQueue(trackList, startIndex = 0, autoPlay = true) {
     if (!trackList || trackList.length === 0) return;
+    if (typeof AuthManager !== 'undefined' && AuthManager.isGuest() && autoPlay) {
+      this.pause();
+      if (this.audio) this.audio.src = '';
+      if (typeof window.openEmberAuthGate === 'function') {
+        window.openEmberAuthGate('🔒 Sign in or create an account to stream music.');
+      }
+      return;
+    }
     this.queue = [...trackList];
     this.originalQueue = [...trackList];
     this.queueIndex = Math.max(0, Math.min(trackList.length - 1, startIndex));

@@ -233,10 +233,15 @@ async function initApp() {
   function bindSongRows(container, tracksList) {
     if (!container) return;
 
-    // Song row click -> play track
+    // Song row click -> play track (Mandatory Auth Protected)
     container.querySelectorAll('.ember-song-row').forEach(row => {
       row.addEventListener('click', (e) => {
         if (e.target.closest('.btn-row-like')) return;
+
+        if (AuthManager.isGuest()) {
+          openAuthModal('🔒 Please sign in to stream this song on EMBER.', true);
+          return;
+        }
 
         const trackId = row.dataset.trackId;
         const selectedIndex = tracksList.findIndex(t => t.id === trackId);
@@ -246,10 +251,16 @@ async function initApp() {
       });
     });
 
-    // Song like button click
+    // Song like button click (Mandatory Auth Protected)
     container.querySelectorAll('.btn-row-like').forEach(btn => {
       btn.addEventListener('click', async (e) => {
         e.stopPropagation();
+
+        if (AuthManager.isGuest()) {
+          openAuthModal('🔒 Please sign in to like and save songs.', true);
+          return;
+        }
+
         const trackId = btn.dataset.trackId;
         const targetTrack = tracksList.find(t => t.id === trackId) || (player.currentTrack?.id === trackId ? player.currentTrack : null);
         if (targetTrack) {
@@ -424,16 +435,26 @@ async function initApp() {
       });
     }
 
-    // Event: Good Morning Play
+    // Event: Good Morning Play (Auth Protected)
     const bannerPlayBtn = document.getElementById('banner-play-btn');
     if (bannerPlayBtn) {
-      bannerPlayBtn.addEventListener('click', () => openPlaylistView('late-nights', true));
+      bannerPlayBtn.addEventListener('click', () => {
+        if (AuthManager.isGuest()) {
+          openAuthModal('🔒 Please sign in to stream music on EMBER.', true);
+          return;
+        }
+        openPlaylistView('late-nights', true);
+      });
     }
 
-    // Event: Daily Mix Play
+    // Event: Daily Mix Play (Auth Protected)
     const dailyMixCard = document.getElementById('daily-mix-card');
     if (dailyMixCard) {
       dailyMixCard.addEventListener('click', () => {
+        if (AuthManager.isGuest()) {
+          openAuthModal('🔒 Please sign in to play Daily Mix on EMBER.', true);
+          return;
+        }
         player.setQueue(DEFAULT_TRACKS, 0, true);
         showToast('Playing Daily Mix 1', 'success');
       });
@@ -1048,6 +1069,10 @@ async function initApp() {
      Tab Switching Navigation
      ========================================================================== */
   function switchTab(tabName, autoFocusSearch = false) {
+    if (AuthManager.isGuest() && (tabName === 'library' || tabName === 'profile')) {
+      openAuthModal('🔒 Please sign in to access ' + (tabName === 'library' ? 'Your Library' : 'Profile') + '.', true);
+      return;
+    }
     if (state.currentTab === tabName && tabName !== 'playlist' && tabName !== 'liked-songs') return;
 
     state.previousTab = state.currentTab;
@@ -1528,19 +1553,26 @@ async function initApp() {
     }
   }
 
-  function openAuthModal(reason = null) {
+  function openAuthModal(reason = null, mandatory = false) {
     el.authModal.style.display = 'flex';
     setAuthMode('login');
     el.authForgotView.style.display = 'none';
     el.authForm.style.display = 'block';
 
+    const isMandatory = mandatory || AuthManager.isGuest();
+    if (el.btnCloseAuthModal) {
+      el.btnCloseAuthModal.style.display = isMandatory ? 'none' : 'block';
+    }
+
     if (reason) {
       showAuthAlert(reason, 'info');
+    } else if (isMandatory) {
+      showAuthAlert('🔒 Sign in to start listening to music on EMBER.', 'info');
     } else if (!EmberConfig.isFirebaseConfigured()) {
       showAuthAlert('⚙️ Firebase not connected. Tap here to enter your Firebase credentials.', 'info');
       el.authAlertBox.style.cursor = 'pointer';
       el.authAlertBox.onclick = () => {
-        closeAuthModal();
+        closeAuthModal(true);
         openCredentialsModal();
       };
     } else {
@@ -1548,10 +1580,17 @@ async function initApp() {
     }
   }
 
-  function closeAuthModal() {
+  function closeAuthModal(force = false) {
+    if (!force && AuthManager.isGuest()) {
+      showToast('Please sign in or create an account to access EMBER.', 'warning');
+      return;
+    }
     el.authModal.style.display = 'none';
     clearAuthAlert();
   }
+
+  // Expose auth gate globally
+  window.openEmberAuthGate = (reason) => openAuthModal(reason, true);
 
   function setAuthMode(mode) {
     authMode = mode;
@@ -1588,10 +1627,9 @@ async function initApp() {
   el.tabAuthLogin.addEventListener('click', () => setAuthMode('login'));
   el.tabAuthSignup.addEventListener('click', () => setAuthMode('signup'));
   el.btnCloseAuthModal.addEventListener('click', () => closeAuthModal());
-  el.btnGuestContinue.addEventListener('click', () => {
-    closeAuthModal();
-    showToast('Continuing as Guest Listener', 'info');
-  });
+  if (el.btnGuestContinue) {
+    el.btnGuestContinue.style.display = 'none';
+  }
 
   // Google Sign-In
   el.btnGoogleAuth.addEventListener('click', async () => {
@@ -1893,12 +1931,24 @@ async function initApp() {
   });
 
   /* ==========================================================================
-     Subscribe to Firebase Auth State Changes
+     Subscribe to Firebase Auth State Changes (Mandatory Auth Gated)
      ========================================================================== */
   AuthManager.onAuthStateChanged(async (user) => {
     updateUserIdentityUI(user);
 
     if (user) {
+      // User is logged in: dismiss mandatory modal gate
+      closeAuthModal(true);
+
+      // Staging queue if empty
+      if (player.queue.length === 0) {
+        player.setQueue(DEFAULT_TRACKS, 0, false);
+        if (DEFAULT_TRACKS.length > 0) {
+          player.currentTrack = DEFAULT_TRACKS[0];
+          player.onTrackChange(DEFAULT_TRACKS[0]);
+        }
+      }
+
       // Ensure Supabase profile exists
       const { isNewUser } = await DbManager.ensureProfile(user);
       const prefs = await DbManager.getPreferences(user.uid);
@@ -1907,6 +1957,17 @@ async function initApp() {
       if (isNewUser || (!prefs.favorite_genres || prefs.favorite_genres.length === 0)) {
         openOnboardingModal(prefs);
       }
+    } else {
+      // User is logged out: halt playback completely and lock down app
+      player.pause();
+      if (player.audio) {
+        player.audio.src = '';
+      }
+      player.currentTrack = null;
+      if (player.onTrackChange) player.onTrackChange(null);
+
+      // Enforce mandatory login gate
+      openAuthModal('🔒 Please sign in to stream music on EMBER.', true);
     }
 
     // Refresh active tab views that depend on user
@@ -1918,12 +1979,15 @@ async function initApp() {
   // Initialize Auth
   await AuthManager.init();
 
-  // Initial Queue setup without autoplay
-  player.setQueue(DEFAULT_TRACKS, 0, false);
-  if (DEFAULT_TRACKS.length > 0) {
-    const first = DEFAULT_TRACKS[0];
-    player.currentTrack = first;
-    player.onTrackChange(first);
+  if (AuthManager.isGuest()) {
+    openAuthModal('🔒 Welcome to EMBER. Please sign in to stream music.', true);
+  } else {
+    player.setQueue(DEFAULT_TRACKS, 0, false);
+    if (DEFAULT_TRACKS.length > 0) {
+      const first = DEFAULT_TRACKS[0];
+      player.currentTrack = first;
+      player.onTrackChange(first);
+    }
   }
 
   // Initial View
