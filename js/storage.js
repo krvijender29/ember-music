@@ -129,6 +129,18 @@ const StorageManager = {
     }
   },
 
+  setRecentTracks(tracks) {
+    try {
+      localStorage.setItem(this.KEYS.RECENT_TRACKS, JSON.stringify(tracks || []));
+    } catch (_) {}
+  },
+
+  clearRecentTracks() {
+    try {
+      localStorage.removeItem(this.KEYS.RECENT_TRACKS);
+    } catch (_) {}
+  },
+
   addRecentTrack(track) {
     let list = this.getRecentTracks();
     list = list.filter(t => t.id !== track.id);
@@ -262,3 +274,5 @@ const StorageManager = {
     localStorage.setItem(this.KEYS.SETTINGS, JSON.stringify(updated));
   }
 };
+
+window.StorageManager = StorageManager;

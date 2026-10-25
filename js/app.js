@@ -213,6 +213,25 @@ async function initApp() {
     return name.slice(0, 2).toUpperCase();
   }
 
+  function cleanArtistName(artist, title = '') {
+    let name = artist || '';
+    if (!name || name === 'Ember' || name === 'Ember Collective' || name === 'Ember Artist') {
+      if (title && title.includes(' - ')) {
+        const parts = title.split(' - ');
+        if (parts[0] && parts[0].trim().length < 35) {
+          name = parts[0].trim();
+        }
+      }
+    }
+    if (!name) return '';
+    const primary = name.split(/\s*(?:,|\bfeat\.?\b|\bft\.?\b|\bx\b|&|\/|\bvs\.?\b)\s*/i)[0];
+    return primary
+      .replace(/\s*-\s*Topic$/i, '')
+      .replace(/\bVEVO\b/i, '')
+      .replace(/\s*Official.*$/i, '')
+      .trim();
+  }
+
   function createSongRowHtml(track, index = 0) {
     const isPlayingThis = player.currentTrack && player.currentTrack.id === track.id;
     const user = AuthManager.getCurrentUser();
@@ -480,16 +499,69 @@ async function initApp() {
   }
 
   /* ==========================================================================
-     Screen 5: HOME VIEW (With Taste Recommendations & Recent History)
+     Screen 5: HOME VIEW (Personalized History & Artist-Driven Recommendations)
      ========================================================================== */
   async function renderHomeView() {
     state.currentTab = 'home';
     const user = AuthManager.getCurrentUser();
 
-    // Load user recommendations & listening history
-    const recommendedTracks = await DbManager.getRecommendations(user?.uid, DEFAULT_TRACKS);
-    const recentHistory = await DbManager.getListeningHistory(user?.uid, 8);
-    const displayRecent = recentHistory.length > 0 ? recentHistory : DEFAULT_TRACKS.slice(0, 8);
+    // 1. Concurrently load user listening history, preferences, and recommendations
+    const [recentHistory, prefs, recommendedTracks] = await Promise.all([
+      DbManager.getListeningHistory(user?.uid, 14).catch(() => []),
+      DbManager.getPreferences(user?.uid).catch(() => null),
+      DbManager.getRecommendations(user?.uid, DEFAULT_TRACKS).catch(() => DEFAULT_TRACKS)
+    ]);
+
+    // Safety guard if user navigated away during load
+    if (state.currentTab !== 'home') return;
+
+    const localRecent = StorageManager.getRecentTracks();
+    const combinedHistory = [...recentHistory];
+    localRecent.forEach(lt => {
+      if (!combinedHistory.some(h => h.id === lt.id)) combinedHistory.push(lt);
+    });
+    const hasHistory = combinedHistory.length > 0;
+    const displayHistoryCards = hasHistory ? combinedHistory.slice(0, 10) : DEFAULT_TRACKS.slice(0, 8);
+
+    // 2. Extract Top Listened Artist from History & Preferences
+    const favArtists = (prefs?.favorite_artists || []).map(a => cleanArtistName(a)).filter(Boolean);
+
+    const artistCounts = {};
+    favArtists.forEach(fa => {
+      artistCounts[fa] = (artistCounts[fa] || 0) + 3;
+    });
+
+    combinedHistory.forEach(track => {
+      const art = cleanArtistName(track.artist, track.title);
+      if (art && art.toLowerCase() !== 'ember' && art.toLowerCase() !== 'ember collective' && art.toLowerCase() !== 'ember artist') {
+        artistCounts[art] = (artistCounts[art] || 0) + 1;
+      }
+    });
+
+    const topArtists = Object.entries(artistCounts)
+      .sort((a, b) => b[1] - a[1])
+      .map(e => e[0]);
+    const topArtist = topArtists.length > 0 ? topArtists[0] : null;
+
+    // 3. Dynamically Fetch Songs for Top Artist (Cached in state or async loaded)
+    let artistSongs = [];
+    if (topArtist) {
+      if (!state.artistRecommendationsCache) state.artistRecommendationsCache = {};
+      if (state.artistRecommendationsCache[topArtist]) {
+        artistSongs = state.artistRecommendationsCache[topArtist];
+      } else {
+        // Fast pre-fill from catalog if available
+        const catalogMatches = DEFAULT_TRACKS.filter(t => cleanArtistName(t.artist, t.title).toLowerCase().includes(topArtist.toLowerCase()));
+        if (catalogMatches.length > 0) {
+          artistSongs = catalogMatches;
+        }
+      }
+    }
+
+    // Dynamic greeting based on time of day
+    const hour = new Date().getHours();
+    const greeting = hour < 12 ? 'Good Morning' : (hour < 18 ? 'Good Afternoon' : 'Good Evening');
+    const userName = user?.displayName ? `, ${user.displayName.split(' ')[0]}` : '';
 
     el.viewport.innerHTML = `
       <!-- Home Search Box (Mobile) -->
@@ -498,25 +570,96 @@ async function initApp() {
         <input type="text" class="ember-search-input" id="home-search-input" placeholder="Search songs, artists, playlists...">
       </div>
 
-      <!-- Good Morning Banner -->
+      <!-- Hero Banner -->
       <div class="good-morning-banner" id="good-morning-hero">
-        <img class="banner-bg-img" src="assets/images/ember_banner.jpg" alt="Good Morning Banner">
+        <img class="banner-bg-img" src="assets/images/ember_banner.jpg" alt="Home Banner">
         <div class="banner-gradient-overlay"></div>
         <div class="banner-text-content">
-          <h2>Good Morning</h2>
-          <p>Let's make today sound better.</p>
+          <h2>${greeting}${escapeHtml(userName)}</h2>
+          <p>${topArtist ? `Vibing with ${escapeHtml(topArtist)} and your favorite soundscapes.` : `Let's make today sound better.`}</p>
         </div>
-        <button class="banner-play-circle" id="banner-play-btn" title="Play Good Morning Mix">
+        <button class="banner-play-circle" id="banner-play-btn" title="Resume Playback">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4"/></svg>
         </button>
       </div>
 
-      <!-- Recently Played / Featured Carousels -->
+      <!-- Top Section: Jump Back In (Listening History) or Discover -->
       <div class="section-title-row">
-        <h3>Featured Playlists</h3>
-        <span class="section-see-all" id="see-all-playlists">See All &gt;</span>
+        <div style="display:flex; align-items:center; gap:8px;">
+          ${hasHistory ? `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--text-gray);"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>` : ''}
+          <h3>${hasHistory ? 'Jump Back In' : 'Trending For You'}</h3>
+        </div>
+        ${hasHistory
+          ? `<button class="section-see-all" id="see-all-history" style="background:none; border:none; cursor:pointer;">Play All &gt;</button>`
+          : `<span class="section-see-all" id="see-all-playlists" style="cursor:pointer;">Explore &gt;</span>`
+        }
       </div>
 
+      <!-- Horizontal Cards: Recently Played Tracks -->
+      <div class="horizontal-card-scroll" id="home-history-scroll">
+        ${displayHistoryCards.map((track, i) => `
+          <div class="ember-music-card history-song-card" data-track-id="${escapeHtml(track.id)}" data-index="${i}" title="${escapeHtml(track.title)}">
+            <div class="card-img-wrapper">
+              <img src="${escapeHtml(track.thumbnail || 'assets/images/ember_midnight.jpg')}" alt="${escapeHtml(track.title)}" loading="lazy">
+              <button class="card-play-hover-btn" data-play-track-id="${escapeHtml(track.id)}" title="Play ${escapeHtml(track.title)}">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 18 12 6 20 6 4"/></svg>
+              </button>
+            </div>
+            <div class="card-title">${escapeHtml(track.title)}</div>
+            <div class="card-subtitle">${escapeHtml(cleanArtistName(track.artist, track.title) || 'Ember')}</div>
+          </div>
+        `).join('')}
+      </div>
+
+      <!-- Artist Suggestion Section: Because You Listened to {topArtist} -->
+      <div id="home-artist-section" style="${topArtist ? 'display:block;' : 'display:none;'}">
+        <div class="section-title-row" style="margin-top:24px; margin-bottom:12px;">
+          <div>
+            <h3 style="display:flex; align-items:center; gap:8px;">
+              <span style="color:#ff6b4a; font-size:1.1rem;">✦</span> More from <span id="home-top-artist-name">${escapeHtml(topArtist || '')}</span>
+            </h3>
+            <div style="font-size:0.74rem; color:var(--text-dim); margin-top:2px;">
+              Recommended songs based on the artist you love listening to
+            </div>
+          </div>
+          <button class="section-see-all" id="btn-play-all-artist" style="background:none; border:none; color:var(--text-gray); cursor:pointer; font-size:0.78rem;">Play All &gt;</button>
+        </div>
+        <div class="song-list-container" id="home-artist-songs">
+          ${artistSongs.length > 0
+            ? artistSongs.map((track, i) => createSongRowHtml(track, i)).join('')
+            : '<div style="padding:14px; text-align:center; color:var(--text-dim); font-size:0.75rem;">Finding soundscapes by this artist...</div>'
+          }
+        </div>
+      </div>
+
+      <!-- Based on Your Taste Section (Requirement 7) -->
+      <div class="section-title-row" style="margin-top:24px;">
+        <h3>Based on Your Taste</h3>
+        <span class="section-see-all" id="tune-taste-shortcut" style="cursor:pointer;">Tune Taste ⚡</span>
+      </div>
+      <div class="song-list-container" id="home-taste-songs">
+        ${recommendedTracks.slice(0, 5).map((track, i) => createSongRowHtml(track, i)).join('')}
+      </div>
+
+      <!-- Made For You Banner -->
+      <div class="section-title-row" style="margin-top:24px;">
+        <h3>Made For You</h3>
+      </div>
+      <div class="made-for-you-card" id="daily-mix-card" style="cursor:pointer;">
+        <div class="daily-mix-info">
+          <h4>Daily Mix ${topArtist ? `• ${escapeHtml(topArtist)} &amp; More` : '1'}</h4>
+          <p>${topArtist ? `Personalized soundscape featuring ${escapeHtml(topArtist)} and similar vibes.` : 'Your favourite music, all in one place.'}</p>
+        </div>
+        <button class="banner-play-circle" id="btn-play-daily-mix" title="Play Daily Mix">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4"/></svg>
+        </button>
+      </div>
+
+      <!-- Curated Soundscapes & Mood Playlists (Accessible below history & artist) -->
+      <div class="section-title-row" style="margin-top:24px;">
+        <h3>Featured Soundscapes &amp; Playlists</h3>
+        <span class="section-see-all" id="see-all-playlists-bottom" style="cursor:pointer;">See All &gt;</span>
+      </div>
       <div class="horizontal-card-scroll" id="home-playlists-scroll">
         ${CURATED_PLAYLISTS.map(pl => `
           <div class="ember-music-card" data-playlist-id="${escapeHtml(pl.id)}">
@@ -531,38 +674,24 @@ async function initApp() {
           </div>
         `).join('')}
       </div>
-
-      <!-- Based on Your Taste Section (Requirement 7) -->
-      <div class="section-title-row">
-        <h3>Based on Your Taste</h3>
-        <span class="section-see-all" id="tune-taste-shortcut">Tune Taste ⚡</span>
-      </div>
-      <div class="song-list-container" id="home-taste-songs">
-        ${recommendedTracks.slice(0, 5).map((track, i) => createSongRowHtml(track, i)).join('')}
-      </div>
-
-      <!-- Made For You Banner -->
-      <div class="section-title-row">
-        <h3>Made For You</h3>
-      </div>
-      <div class="made-for-you-card" id="daily-mix-card">
-        <div class="daily-mix-info">
-          <h4>Daily Mix 1</h4>
-          <p>Your favourite music, all in one place.</p>
-        </div>
-        <button class="banner-play-circle" id="btn-play-daily-mix" title="Play Daily Mix 1">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4"/></svg>
-        </button>
-      </div>
-
-      <!-- Recently Played Listening History -->
-      <div class="section-title-row">
-        <h3>Recently Played</h3>
-      </div>
-      <div class="song-list-container" id="home-mood-songs">
-        ${displayRecent.map((track, i) => createSongRowHtml(track, i)).join('')}
-      </div>
     `;
+
+    // Asynchronously fetch live artist recommendations if not yet cached
+    if (topArtist && (!state.artistRecommendationsCache || !state.artistRecommendationsCache[topArtist])) {
+      YouTubeAPI.search(`${topArtist} songs`, 6, 'songs').then(results => {
+        if (results && results.length > 0) {
+          const valid = results.filter(t => t.id);
+          if (!state.artistRecommendationsCache) state.artistRecommendationsCache = {};
+          state.artistRecommendationsCache[topArtist] = valid;
+
+          const container = document.getElementById('home-artist-songs');
+          if (container && state.currentTab === 'home') {
+            container.innerHTML = valid.map((track, i) => createSongRowHtml(track, i)).join('');
+            bindSongRows(container, valid);
+          }
+        }
+      }).catch(err => console.warn('[Home] Artist recommendation async error:', err));
+    }
 
     // Event: Home search input
     const homeSearchInput = document.getElementById('home-search-input');
@@ -579,7 +708,7 @@ async function initApp() {
       });
     }
 
-    // Event: Good Morning Play (Auth Protected)
+    // Event: Hero Play Button (Plays History or Default Queue)
     const bannerPlayBtn = document.getElementById('banner-play-btn');
     if (bannerPlayBtn) {
       bannerPlayBtn.addEventListener('click', () => {
@@ -587,11 +716,59 @@ async function initApp() {
           openAuthModal('🔒 Please sign in to stream music on EMBER.', true);
           return;
         }
-        openPlaylistView('late-nights', true);
+        if (hasHistory) {
+          player.setQueue(displayHistoryCards, 0, true);
+          showToast(`Resuming "${displayHistoryCards[0].title}"`, 'success');
+        } else {
+          openPlaylistView('late-nights', true);
+        }
       });
     }
 
-    // Event: Daily Mix Play (Auth Protected)
+    // Event: History cards click -> play song immediately
+    document.querySelectorAll('#home-history-scroll .history-song-card').forEach(card => {
+      card.addEventListener('click', (e) => {
+        if (AuthManager.isGuest()) {
+          openAuthModal('🔒 Please sign in to stream music on EMBER.', true);
+          return;
+        }
+        const trackId = card.dataset.trackId;
+        const idx = displayHistoryCards.findIndex(t => t.id === trackId);
+        if (idx >= 0) {
+          player.setQueue(displayHistoryCards, idx, true);
+        }
+      });
+    });
+
+    // Event: "Play All" history
+    const seeAllHistoryBtn = document.getElementById('see-all-history');
+    if (seeAllHistoryBtn) {
+      seeAllHistoryBtn.addEventListener('click', () => {
+        if (AuthManager.isGuest()) {
+          openAuthModal('🔒 Please sign in to stream music on EMBER.', true);
+          return;
+        }
+        if (displayHistoryCards.length > 0) {
+          player.setQueue(displayHistoryCards, 0, true);
+          showToast('Playing your recent history', 'success');
+        }
+      });
+    }
+
+    // Event: "Play All" for Top Artist songs
+    const playAllArtistBtn = document.getElementById('btn-play-all-artist');
+    if (playAllArtistBtn && artistSongs.length > 0) {
+      playAllArtistBtn.addEventListener('click', () => {
+        if (AuthManager.isGuest()) {
+          openAuthModal('🔒 Please sign in to stream music on EMBER.', true);
+          return;
+        }
+        player.setQueue(artistSongs, 0, true);
+        showToast(`Playing ${topArtist} mix`, 'success');
+      });
+    }
+
+    // Event: Daily Mix Play
     const dailyMixCard = document.getElementById('daily-mix-card');
     if (dailyMixCard) {
       dailyMixCard.addEventListener('click', () => {
@@ -599,8 +776,9 @@ async function initApp() {
           openAuthModal('🔒 Please sign in to play Daily Mix on EMBER.', true);
           return;
         }
-        player.setQueue(DEFAULT_TRACKS, 0, true);
-        showToast('Playing Daily Mix 1', 'success');
+        const mixQueue = artistSongs.length > 0 ? [...artistSongs, ...displayHistoryCards] : DEFAULT_TRACKS;
+        player.setQueue(mixQueue, 0, true);
+        showToast(`Playing Daily Mix`, 'success');
       });
     }
 
@@ -610,8 +788,8 @@ async function initApp() {
       tuneTasteBtn.addEventListener('click', () => openOnboardingModal());
     }
 
-    // Event: Playlist card clicks
-    document.querySelectorAll('.ember-music-card').forEach(card => {
+    // Event: Curated Playlist card clicks
+    document.querySelectorAll('#home-playlists-scroll .ember-music-card').forEach(card => {
       card.addEventListener('click', (e) => {
         const playBtn = e.target.closest('.card-play-hover-btn');
         const playlistId = card.dataset.playlistId;
@@ -628,10 +806,16 @@ async function initApp() {
     if (seeAllBtn) {
       seeAllBtn.addEventListener('click', () => switchTab('library'));
     }
+    const seeAllBottomBtn = document.getElementById('see-all-playlists-bottom');
+    if (seeAllBottomBtn) {
+      seeAllBottomBtn.addEventListener('click', () => switchTab('library'));
+    }
 
     // Bind songs lists
+    if (topArtist && artistSongs.length > 0) {
+      bindSongRows(document.getElementById('home-artist-songs'), artistSongs);
+    }
     bindSongRows(document.getElementById('home-taste-songs'), recommendedTracks.slice(0, 5));
-    bindSongRows(document.getElementById('home-mood-songs'), displayRecent);
   }
 
   /* ==========================================================================

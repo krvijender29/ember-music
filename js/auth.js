@@ -4,7 +4,7 @@
  * password reset, persistent session management, and ID token retrieval for Supabase.
  */
 
-const AuthManager = {
+var AuthManager = {
   _user: null,
   _initialized: false,
   _listeners: [],
@@ -248,3 +248,5 @@ const AuthManager = {
     this._notifyListeners(null);
   }
 };
+
+window.AuthManager = AuthManager;
