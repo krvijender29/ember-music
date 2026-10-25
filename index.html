@@ -81,12 +81,12 @@
         <div class="sidebar-playlist-link" data-playlist-id="workout-peak">Workout Peak</div>
       </div>
 
-      <!-- Sidebar User Badge at Bottom -->
-      <div class="sidebar-user-footer" id="sidebar-user-footer" title="View Profile">
-        <div class="sidebar-avatar-circle">VS</div>
+      <!-- Sidebar User Badge at Bottom (Dynamic Auth State) -->
+      <div class="sidebar-user-footer" id="sidebar-user-footer" title="Account / Profile">
+        <div class="sidebar-avatar-circle" id="sidebar-user-avatar">VS</div>
         <div class="sidebar-user-meta">
-          <span class="sidebar-user-name">Vijender Singh</span>
-          <span class="sidebar-user-status">⚡ VIP 320kbps</span>
+          <span class="sidebar-user-name" id="sidebar-user-name">Vijender Singh</span>
+          <span class="sidebar-user-status" id="sidebar-user-status">⚡ VIP 320kbps</span>
         </div>
       </div>
     </aside>
@@ -122,8 +122,10 @@
         <button class="header-icon-btn" id="btn-header-bell" title="Notifications">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
         </button>
-        <button class="header-avatar-btn" id="btn-header-profile" title="Vijender Singh Profile">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        <button class="header-avatar-btn" id="btn-header-profile" title="View Profile">
+          <div id="header-avatar-inner" style="display:flex; align-items:center; justify-content:center; width:100%; height:100%;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          </div>
         </button>
       </div>
     </header>
@@ -329,12 +331,163 @@
       </div>
     </div>
 
+    <!-- Auth Modal (Firebase Authentication) -->
+    <div class="ember-modal-backdrop" id="auth-modal" style="display:none;">
+      <div class="ember-modal-card auth-card">
+        <button class="auth-modal-close-btn" id="btn-close-auth-modal" title="Close">✕</button>
+
+        <div class="auth-tabs-header">
+          <button class="auth-tab-btn active" id="tab-auth-login">Sign In</button>
+          <button class="auth-tab-btn" id="tab-auth-signup">Create Account</button>
+        </div>
+
+        <div class="auth-alert" id="auth-alert-box"></div>
+
+        <!-- Google One-Click Sign In -->
+        <button class="btn-google-auth" id="btn-google-auth" type="button">
+          <svg width="18" height="18" viewBox="0 0 24 24"><path fill="#EA4335" d="M12 5c1.6 0 3 .6 4.1 1.7l3.1-3.1C17.3 1.8 14.8 1 12 1 7.5 1 3.7 3.6 1.9 7.3l3.7 2.9C6.5 7.4 9 5 12 5z"/><path fill="#4285F4" d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.5h6.5c-.3 1.5-1.1 2.8-2.4 3.7l3.7 2.9c2.2-2 3.7-5 3.7-8.8z"/><path fill="#FBBC05" d="M5.6 14.8c-.2-.7-.4-1.5-.4-2.3s.2-1.6.4-2.3L1.9 7.3C.7 9.7 0 12.3 0 15s.7 5.3 1.9 7.7l3.7-2.9z"/><path fill="#34A853" d="M12 24c3.2 0 6-1.1 8-3l-3.7-2.9c-1.1.7-2.5 1.2-4.3 1.2-3 0-5.5-2.4-6.4-5.2L1.9 17C3.7 20.7 7.5 24 12 24z"/></svg>
+          <span>Continue with Google</span>
+        </button>
+
+        <div class="auth-divider"><span>or with email</span></div>
+
+        <!-- Auth Form (Sign In / Sign Up) -->
+        <form id="auth-form" onsubmit="return false;">
+          <div class="auth-form-group" id="auth-name-group" style="display:none;">
+            <label for="auth-name-input">Display Name</label>
+            <input type="text" id="auth-name-input" placeholder="Your name...">
+          </div>
+
+          <div class="auth-form-group">
+            <label for="auth-email-input">Email Address</label>
+            <input type="email" id="auth-email-input" placeholder="you@domain.com" autocomplete="email">
+          </div>
+
+          <div class="auth-form-group" id="auth-password-group">
+            <label for="auth-password-input">Password</label>
+            <input type="password" id="auth-password-input" placeholder="••••••••" autocomplete="current-password">
+          </div>
+
+          <button type="submit" class="auth-btn-submit" id="btn-auth-submit">Sign In</button>
+
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-top:12px;">
+            <button type="button" class="auth-link-btn" id="btn-show-forgot-pw">Forgot password?</button>
+            <button type="button" class="auth-link-btn" id="btn-guest-continue">Continue as Guest</button>
+          </div>
+        </form>
+
+        <!-- Forgot Password View (Hidden by default) -->
+        <div id="auth-forgot-view" style="display:none;">
+          <p style="font-size:0.8rem; color:var(--text-gray); margin-bottom:14px;">Enter your email to receive a password reset link.</p>
+          <div class="auth-form-group">
+            <label for="auth-reset-email-input">Email Address</label>
+            <input type="email" id="auth-reset-email-input" placeholder="you@domain.com">
+          </div>
+          <button type="button" class="auth-btn-submit" id="btn-send-reset-link">Send Reset Email</button>
+          <button type="button" class="auth-link-btn" id="btn-back-to-login" style="margin-top:12px;">Back to Sign In</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Music Taste Onboarding Modal (Supabase user_preferences) -->
+    <div class="ember-modal-backdrop" id="onboarding-modal" style="display:none;">
+      <div class="ember-modal-card onboarding-card">
+        <h3>Tune Your Soundscape</h3>
+        <p style="font-size:0.75rem; color:var(--text-gray); margin-bottom:14px;">Select your favorite genres and artists to power personalized daily mixes.</p>
+
+        <label style="font-size:0.75rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.05em; font-weight:700;">Favorite Genres</label>
+        <div class="genre-pills-wrap" id="onboarding-genre-pills">
+          <div class="genre-select-pill" data-genre="Punjabi">Punjabi</div>
+          <div class="genre-select-pill" data-genre="Hip Hop">Hip Hop</div>
+          <div class="genre-select-pill" data-genre="Lo-Fi">Lo-Fi</div>
+          <div class="genre-select-pill" data-genre="Ambient">Ambient</div>
+          <div class="genre-select-pill" data-genre="Electronic">Electronic</div>
+          <div class="genre-select-pill" data-genre="Pop">Pop</div>
+          <div class="genre-select-pill" data-genre="Rock">Rock</div>
+          <div class="genre-select-pill" data-genre="Indie">Indie</div>
+          <div class="genre-select-pill" data-genre="R&B">R&B</div>
+          <div class="genre-select-pill" data-genre="Classical">Classical</div>
+        </div>
+
+        <label style="font-size:0.75rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.05em; font-weight:700;">Favorite Artists</label>
+        <input type="text" class="artist-tag-input-box" id="onboarding-artist-input" placeholder="Type artist name and press Enter...">
+        <div class="artist-tags-container" id="onboarding-artist-tags"></div>
+
+        <div style="display:flex; gap:10px; justify-content:space-between; align-items:center; margin-top:16px;">
+          <button class="ember-pill" id="btn-skip-onboarding" type="button">Skip for Now</button>
+          <button class="ember-pill active" id="btn-save-onboarding" type="button">Save &amp; Continue</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Edit Profile Modal -->
+    <div class="ember-modal-backdrop" id="edit-profile-modal" style="display:none;">
+      <div class="ember-modal-card auth-card">
+        <button class="auth-modal-close-btn" id="btn-close-edit-profile" title="Close">✕</button>
+        <h3>Edit Profile</h3>
+        <p style="font-size:0.75rem; color:var(--text-gray); margin-bottom:14px;">Update your public identity on Ember</p>
+
+        <div class="auth-form-group">
+          <label for="edit-profile-display-name">Display Name</label>
+          <input type="text" id="edit-profile-display-name" placeholder="Display Name">
+        </div>
+
+        <div class="auth-form-group">
+          <label for="edit-profile-username">Username</label>
+          <input type="text" id="edit-profile-username" placeholder="@username">
+        </div>
+
+        <div class="auth-form-group">
+          <label for="edit-profile-avatar-url">Avatar URL (Optional)</label>
+          <input type="url" id="edit-profile-avatar-url" placeholder="https://...">
+        </div>
+
+        <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:16px;">
+          <button class="ember-pill" id="btn-cancel-profile" type="button">Cancel</button>
+          <button class="ember-pill active" id="btn-save-profile" type="button">Save Changes</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Credentials / Connect Cloud Modal (Firebase & Supabase) -->
+    <div class="ember-modal-backdrop" id="credentials-modal" style="display:none;">
+      <div class="ember-modal-card auth-card" style="max-width:440px;">
+        <button class="auth-modal-close-btn" id="btn-close-credentials" title="Close">✕</button>
+        <h3>Cloud Integration</h3>
+        <p style="font-size:0.75rem; color:var(--text-gray); margin-bottom:14px;">Connect your Firebase Authentication &amp; Supabase PostgreSQL instances.</p>
+
+        <div style="font-size:0.72rem; font-weight:700; color:var(--text-muted); margin-bottom:4px;">FIREBASE WEB CONFIG (JSON)</div>
+        <textarea id="cfg-firebase-json" placeholder='{"apiKey":"...", "authDomain":"...", "projectId":"...", "appId":"..."}' style="width:100%; height:75px; background:var(--bg-black); color:#fff; border:1px solid var(--border-subtle); border-radius:10px; padding:8px; font-family:monospace; font-size:0.72rem; outline:none; resize:none; margin-bottom:10px;"></textarea>
+
+        <div style="font-size:0.72rem; font-weight:700; color:var(--text-muted); margin-bottom:4px;">SUPABASE PROJECT URL</div>
+        <input type="url" id="cfg-supabase-url" placeholder="https://your-project.supabase.co" class="ember-search-input" style="border:1px solid var(--border-subtle); padding:8px 12px; border-radius:10px; margin-bottom:10px; width:100%; background:var(--bg-black); color:#fff; font-size:0.75rem;">
+
+        <div style="font-size:0.72rem; font-weight:700; color:var(--text-muted); margin-bottom:4px;">SUPABASE ANON KEY</div>
+        <input type="text" id="cfg-supabase-key" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6..." class="ember-search-input" style="border:1px solid var(--border-subtle); padding:8px 12px; border-radius:10px; margin-bottom:14px; width:100%; background:var(--bg-black); color:#fff; font-size:0.75rem;">
+
+        <div style="display:flex; gap:10px; justify-content:space-between; align-items:center;">
+          <button class="ember-pill" id="btn-clear-cloud-cfg" type="button">Reset</button>
+          <button class="ember-pill active" id="btn-save-cloud-cfg" type="button">Save &amp; Reload</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Native HTML5 High-Speed Audio Player Engine -->
     <audio id="ember-audio-player" preload="auto" style="display:none;"></audio>
 
   </div>
 
-  <!-- Scripts -->
+  <!-- Firebase SDK (v10 Compat) -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+
+  <!-- Supabase JS Client (v2) -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <!-- App Architecture Scripts -->
+  <script src="js/config.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/db.js"></script>
   <script src="js/data.js"></script>
   <script src="js/storage.js"></script>
   <script src="js/yt-api.js"></script>
