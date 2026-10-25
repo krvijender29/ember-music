@@ -1,7 +1,7 @@
 /**
  * EMBER - Firebase Authentication Manager
- * Handles Email/Password sign up, sign in, Google Sign-In, password reset,
- * persistent session management, and ID token retrieval for Supabase.
+ * Handles Email/Password sign up, sign in, Google Sign-In (Popup & Redirect),
+ * password reset, persistent session management, and ID token retrieval for Supabase.
  */
 
 const AuthManager = {
@@ -21,7 +21,6 @@ const AuthManager = {
 
     if (!EmberConfig.isFirebaseConfigured()) {
       console.info('[Ember Auth] Firebase credentials not yet configured. Guest Mode active.');
-      // Check for simulated local test user if user tested without live Firebase
       const localSimulated = localStorage.getItem('ember_local_sim_user');
       if (localSimulated) {
         try {
@@ -40,6 +39,24 @@ const AuthManager = {
 
       // Set persistence to LOCAL explicitly
       await firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+
+      // Handle redirect result if returning from signInWithRedirect
+      try {
+        const redirectResult = await firebase.auth().getRedirectResult();
+        if (redirectResult && redirectResult.user) {
+          const u = redirectResult.user;
+          this._user = {
+            uid: u.uid,
+            email: u.email,
+            displayName: u.displayName || u.email.split('@')[0],
+            photoURL: u.photoURL || null,
+            _raw: u
+          };
+          this._notifyListeners(this._user);
+        }
+      } catch (redirErr) {
+        console.warn('[Ember Auth] Redirect sign-in check warning:', redirErr);
+      }
 
       firebase.auth().onAuthStateChanged(async (firebaseUser) => {
         if (firebaseUser) {
@@ -162,33 +179,55 @@ const AuthManager = {
 
   async signInWithGoogle() {
     if (!EmberConfig.isFirebaseConfigured()) {
-      const email = 'google.user@embermusic.com';
-      const simUser = {
-        uid: 'google_user_' + Date.now().toString(36),
-        email,
-        displayName: 'Google Listener',
-        photoURL: 'assets/images/ember_logo.jpg',
-        token: 'sim_jwt_' + Date.now()
-      };
-      this._user = simUser;
-      localStorage.setItem('ember_local_sim_user', JSON.stringify(simUser));
-      this._notifyListeners(this._user);
-      return this._user;
+      throw new Error(
+        "FIREBASE_NOT_CONFIGURED: Google Sign-In requires your Firebase project credentials. Tap 'Cloud Settings' to configure your Firebase Web App keys."
+      );
+    }
+
+    if (!window.firebase) {
+      throw new Error("Firebase SDK failed to load. Please check your internet connection.");
+    }
+
+    if (!firebase.apps.length) {
+      firebase.initializeApp(EmberConfig.FIREBASE);
     }
 
     const provider = new firebase.auth.GoogleAuthProvider();
     provider.addScope('email');
     provider.addScope('profile');
-    const result = await firebase.auth().signInWithPopup(provider);
-    this._user = {
-      uid: result.user.uid,
-      email: result.user.email,
-      displayName: result.user.displayName || result.user.email.split('@')[0],
-      photoURL: result.user.photoURL,
-      _raw: result.user
-    };
-    this._notifyListeners(this._user);
-    return this._user;
+    // Force prompt account picker
+    provider.setCustomParameters({ prompt: 'select_account' });
+
+    try {
+      // Try popup sign in first
+      const result = await firebase.auth().signInWithPopup(provider);
+      if (result && result.user) {
+        this._user = {
+          uid: result.user.uid,
+          email: result.user.email,
+          displayName: result.user.displayName || result.user.email.split('@')[0],
+          photoURL: result.user.photoURL,
+          _raw: result.user
+        };
+        this._notifyListeners(this._user);
+        return this._user;
+      }
+      return null;
+    } catch (popupErr) {
+      console.warn('[Ember Auth] Google popup error:', popupErr);
+
+      // If popup was blocked by browser or mobile webview, gracefully fall back to redirect
+      if (
+        popupErr.code === 'auth/popup-blocked' ||
+        popupErr.code === 'auth/cancelled-popup-request'
+      ) {
+        console.info('[Ember Auth] Falling back to signInWithRedirect...');
+        await firebase.auth().signInWithRedirect(provider);
+        return null;
+      }
+
+      throw popupErr;
+    }
   },
 
   async sendPasswordReset(email) {

@@ -1491,6 +1491,43 @@ async function initApp() {
      ========================================================================== */
   let authMode = 'login'; // 'login' | 'signup'
 
+  function formatAuthErrorMessage(err) {
+    if (!err) return 'An unexpected authentication error occurred.';
+    const code = err.code || '';
+    switch (code) {
+      case 'auth/unauthorized-domain':
+        return `Domain "${window.location.hostname || 'localhost'}" is not authorized! In Firebase Console > Authentication > Settings > Authorized Domains, add "${window.location.hostname || 'localhost'}".`;
+      case 'auth/operation-not-allowed':
+      case 'auth/configuration-not-found':
+        return 'Google Sign-in is not enabled in your Firebase project! In Firebase Console > Authentication > Sign-in method, enable Google and select a Support Email.';
+      case 'auth/popup-blocked':
+        return 'Sign-in popup was blocked by your browser. Please allow popups for this site or use redirect.';
+      case 'auth/popup-closed-by-user':
+        return 'Google Sign-In was cancelled (popup window was closed).';
+      case 'auth/cancelled-popup-request':
+        return 'Previous popup request was cancelled.';
+      case 'auth/invalid-api-key':
+      case 'auth/api-key-not-valid.':
+        return 'Invalid Firebase API Key. Please verify your credentials in js/config.js or Cloud Settings.';
+      case 'auth/user-disabled':
+        return 'This account has been disabled in the Firebase Console.';
+      case 'auth/network-request-failed':
+        return 'Network connection failed. Please check your internet connection.';
+      case 'auth/wrong-password':
+      case 'auth/invalid-credential':
+        return 'Incorrect email or password. Please try again.';
+      case 'auth/user-not-found':
+        return 'No user found with this email. Please create an account first.';
+      case 'auth/email-already-in-use':
+        return 'An account already exists with this email address. Please sign in instead.';
+      default:
+        if (err.message && err.message.includes('FIREBASE_NOT_CONFIGURED')) {
+          return "Firebase credentials not configured! Click here to open Cloud Settings.";
+        }
+        return err.message || 'Authentication failed.';
+    }
+  }
+
   function openAuthModal(reason = null) {
     el.authModal.style.display = 'flex';
     setAuthMode('login');
@@ -1499,6 +1536,13 @@ async function initApp() {
 
     if (reason) {
       showAuthAlert(reason, 'info');
+    } else if (!EmberConfig.isFirebaseConfigured()) {
+      showAuthAlert('⚙️ Firebase not connected. Tap here to enter your Firebase credentials.', 'info');
+      el.authAlertBox.style.cursor = 'pointer';
+      el.authAlertBox.onclick = () => {
+        closeAuthModal();
+        openCredentialsModal();
+      };
     } else {
       clearAuthAlert();
     }
@@ -1537,6 +1581,8 @@ async function initApp() {
     el.authAlertBox.textContent = '';
     el.authAlertBox.className = 'auth-alert';
     el.authAlertBox.style.display = 'none';
+    el.authAlertBox.style.cursor = 'default';
+    el.authAlertBox.onclick = null;
   }
 
   el.tabAuthLogin.addEventListener('click', () => setAuthMode('login'));
@@ -1553,10 +1599,22 @@ async function initApp() {
       el.btnGoogleAuth.disabled = true;
       el.btnGoogleAuth.style.opacity = '0.6';
       const user = await AuthManager.signInWithGoogle();
-      closeAuthModal();
-      showToast(`Welcome to Ember, ${user.displayName || 'listener'}!`, 'success');
+      if (user) {
+        closeAuthModal();
+        showToast(`Welcome to Ember, ${user.displayName || 'listener'}!`, 'success');
+      }
     } catch (err) {
-      showAuthAlert(err.message);
+      console.error('[Google Auth Error]', err);
+      const msg = formatAuthErrorMessage(err);
+      showAuthAlert(msg, 'error');
+
+      if (err.message && err.message.includes('FIREBASE_NOT_CONFIGURED')) {
+        el.authAlertBox.style.cursor = 'pointer';
+        el.authAlertBox.onclick = () => {
+          closeAuthModal();
+          openCredentialsModal();
+        };
+      }
     } finally {
       el.btnGoogleAuth.disabled = false;
       el.btnGoogleAuth.style.opacity = '1';
@@ -1588,7 +1646,8 @@ async function initApp() {
         showToast(`Account created! Welcome, ${user.displayName}.`, 'success');
       }
     } catch (err) {
-      showAuthAlert(err.message);
+      const msg = formatAuthErrorMessage(err);
+      showAuthAlert(msg);
     } finally {
       el.btnAuthSubmit.disabled = false;
       el.btnAuthSubmit.textContent = authMode === 'login' ? 'Sign In' : 'Create Account';
@@ -1781,11 +1840,42 @@ async function initApp() {
     setTimeout(() => window.location.reload(), 600);
   });
 
+  function parseFirebaseConfigInput(input) {
+    if (!input || !input.trim()) return null;
+    const str = input.trim();
+    try {
+      return JSON.parse(str);
+    } catch (_) {}
+
+    try {
+      const jsonLike = str
+        .replace(/^(const|let|var)\s+\w+\s*=\s*/, '')
+        .replace(/;\s*$/, '')
+        .replace(/([{,]\s*)([a-zA-Z0-9_]+)\s*:/g, '$1"$2":')
+        .replace(/'([^'\\]*(\\.[^'\\]*)*)'/g, '"$1"')
+        .replace(/,\s*([}\]])/g, '$1');
+      return JSON.parse(jsonLike);
+    } catch (_) {}
+
+    const extracted = {};
+    const keys = ['apiKey', 'authDomain', 'projectId', 'storageBucket', 'messagingSenderId', 'appId'];
+    keys.forEach(k => {
+      const match = str.match(new RegExp(`['"]?${k}['"]?\\s*:\\s*['"]([^'"]+)['"]`));
+      if (match && match[1]) {
+        extracted[k] = match[1];
+      }
+    });
+    if (extracted.apiKey && extracted.projectId) {
+      return extracted;
+    }
+    throw new Error("Could not parse Firebase configuration. Please paste valid JSON or Firebase config object containing apiKey and projectId.");
+  }
+
   el.btnSaveCloudCfg.addEventListener('click', () => {
     try {
       let fb = null;
       if (el.cfgFirebaseJson.value.trim()) {
-        fb = JSON.parse(el.cfgFirebaseJson.value.trim());
+        fb = parseFirebaseConfigInput(el.cfgFirebaseJson.value.trim());
       }
       let sb = null;
       if (el.cfgSupabaseUrl.value.trim() && el.cfgSupabaseKey.value.trim()) {
@@ -1798,7 +1888,7 @@ async function initApp() {
       showToast('Cloud credentials saved! Initializing live services...', 'success');
       setTimeout(() => window.location.reload(), 800);
     } catch (e) {
-      alert('Invalid Firebase JSON format: ' + e.message);
+      alert(e.message);
     }
   });
 
