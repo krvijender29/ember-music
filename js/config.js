@@ -18,8 +18,8 @@ const EmberConfig = {
 
   // Supabase PostgreSQL Configuration (Public Anon Key only - Never service_role)
   SUPABASE: {
-    url: window.__ENV__?.SUPABASE_URL || "YOUR_SUPABASE_URL",
-    anonKey: window.__ENV__?.SUPABASE_ANON_KEY || "YOUR_SUPABASE_ANON_KEY"
+    url: (window.__ENV__?.SUPABASE_URL || "https://ombptejuakpgaapeclyj.supabase.co").replace(/\/rest\/v1\/?$/, '').replace(/\/$/, ''),
+    anonKey: window.__ENV__?.SUPABASE_ANON_KEY || "sb_publishable_RJOx9D6cYvi_75XCoWY8Dw_VDUHR8eF"
   },
 
   // Check if Firebase is configured with real credentials
@@ -46,6 +46,7 @@ const EmberConfig = {
       const sb = localStorage.getItem('ember_sb_config');
       if (sb) {
         const parsed = JSON.parse(sb);
+        if (parsed.url) parsed.url = parsed.url.replace(/\/rest\/v1\/?$/, '').replace(/\/$/, '');
         this.SUPABASE = { ...this.SUPABASE, ...parsed };
       }
     } catch (_) {}
@@ -58,6 +59,7 @@ const EmberConfig = {
       this.FIREBASE = { ...this.FIREBASE, ...fbConfig };
     }
     if (sbConfig) {
+      if (sbConfig.url) sbConfig.url = sbConfig.url.replace(/\/rest\/v1\/?$/, '').replace(/\/$/, '');
       localStorage.setItem('ember_sb_config', JSON.stringify(sbConfig));
       this.SUPABASE = { ...this.SUPABASE, ...sbConfig };
     }

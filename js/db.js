@@ -23,8 +23,8 @@ const DbManager = {
             autoRefreshToken: false
           },
           accessToken: async () => {
-            const token = await AuthManager.getIdToken();
-            return token || EmberConfig.SUPABASE.anonKey;
+            // Use Supabase publishable/anon key for PostgREST authorization
+            return EmberConfig.SUPABASE.anonKey;
           }
         }
       );
