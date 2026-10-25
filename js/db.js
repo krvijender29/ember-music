@@ -71,8 +71,8 @@ const DbManager = {
       // Create new profile record
       const newProfile = {
         id: user.uid,
-        display_name: user.displayName || user.email.split('@')[0],
-        username: user.email ? user.email.split('@')[0] : 'emberuser',
+        email: user.email || null,
+        display_name: user.displayName || (user.email ? user.email.split('@')[0] : 'Listener'),
         avatar_url: user.photoURL || null,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
