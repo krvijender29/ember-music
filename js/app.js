@@ -53,6 +53,7 @@ async function initApp() {
     // Fullscreen Sheet
     sheet: document.getElementById('now-playing-sheet'),
     btnSheetCollapse: document.getElementById('btn-sheet-collapse'),
+    btnSheetOptions: document.getElementById('btn-sheet-options'),
     sheetArtwork: document.getElementById('sheet-artwork'),
     sheetTitle: document.getElementById('sheet-title'),
     sheetArtist: document.getElementById('sheet-artist'),
@@ -72,9 +73,13 @@ async function initApp() {
     sheetToggleVideoBtn: document.getElementById('sheet-toggle-video-btn'),
     sheetQueueBtn: document.getElementById('sheet-queue-btn'),
 
-    // Video Wrapper & Create Playlist Modal
+    // Video Wrapper, Queue Modal & Create Playlist Modal
     ytWrapper: document.getElementById('yt-player-wrapper'),
     btnCloseVideo: document.getElementById('btn-close-video'),
+    queueModal: document.getElementById('queue-modal'),
+    btnCloseQueue: document.getElementById('btn-close-queue'),
+    btnClearQueue: document.getElementById('btn-clear-queue'),
+    queueModalList: document.getElementById('queue-modal-list'),
     createPlaylistModal: document.getElementById('create-playlist-modal'),
     newPlaylistTitleInput: document.getElementById('new-playlist-title'),
     btnCancelCreatePl: document.getElementById('btn-cancel-create-pl'),
@@ -435,6 +440,102 @@ async function initApp() {
     });
   }
 
+  /* ==========================================================================
+     Play Queue Modal Management
+     ========================================================================== */
+  function renderQueueList() {
+    if (!el.queueModalList) return;
+    const queue = player.queue || [];
+    const currentIndex = player.queueIndex >= 0 ? player.queueIndex : 0;
+    const currentTrack = player.currentTrack;
+
+    if (queue.length === 0 && !currentTrack) {
+      el.queueModalList.innerHTML = `
+        <div style="text-align:center; padding:32px 14px; color:var(--text-gray); font-size:0.84rem;">
+          Your queue is currently empty.<br>
+          <span style="font-size:0.74rem; color:var(--text-dim); margin-top:4px; display:inline-block;">Play any song or playlist to start listening!</span>
+        </div>
+      `;
+      return;
+    }
+
+    let html = '';
+    // 1. Now Playing Section
+    if (currentTrack) {
+      html += `
+        <div style="font-size:0.72rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; margin-bottom:4px; letter-spacing:0.04em;">Now Playing</div>
+        <div class="ember-song-row playing" style="background:rgba(255,255,255,0.06); border-radius:10px; margin-bottom:12px;" data-queue-index="${currentIndex}">
+          <img class="song-row-thumb" src="${escapeHtml(currentTrack.thumbnail || 'assets/images/ember_midnight.jpg')}" alt="${escapeHtml(currentTrack.title)}">
+          <div class="song-row-meta">
+            <div class="song-row-title" style="color:#ff6b4a;">${escapeHtml(currentTrack.title)}</div>
+            <div class="song-row-artist">${escapeHtml(currentTrack.artist || 'Ember Artist')}</div>
+          </div>
+          <div style="font-size:0.75rem; color:#ff6b4a; padding-right:10px; display:flex; align-items:center; gap:4px;">
+            <span>▶</span> Playing
+          </div>
+        </div>
+      `;
+    }
+
+    // 2. Next Up Section
+    const nextTracks = queue.map((t, idx) => ({ track: t, originalIndex: idx })).filter(item => item.originalIndex !== currentIndex);
+    if (nextTracks.length > 0) {
+      html += `<div style="font-size:0.72rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; margin-bottom:6px; letter-spacing:0.04em;">Next In Queue (${nextTracks.length})</div>`;
+      html += nextTracks.map((item, i) => `
+        <div class="ember-song-row queue-item-row" data-queue-index="${item.originalIndex}" style="cursor:pointer; border-radius:8px;">
+          <span style="font-size:0.74rem; color:var(--text-dim); width:18px; text-align:center; flex-shrink:0;">${i + 1}</span>
+          <img class="song-row-thumb" src="${escapeHtml(item.track.thumbnail || 'assets/images/ember_midnight.jpg')}" alt="${escapeHtml(item.track.title)}">
+          <div class="song-row-meta">
+            <div class="song-row-title">${escapeHtml(item.track.title)}</div>
+            <div class="song-row-artist">${escapeHtml(item.track.artist || 'Ember Artist')}</div>
+          </div>
+          <button class="btn-row-action btn-remove-queue-item" data-queue-index="${item.originalIndex}" title="Remove from Queue" style="color:var(--text-dim); font-size:14px; width:28px; height:28px; display:flex; align-items:center; justify-content:center; background:none; border:none; cursor:pointer;">
+            ✕
+          </button>
+        </div>
+      `).join('');
+    } else {
+      html += `<div style="text-align:center; padding:18px; color:var(--text-dim); font-size:0.75rem;">No more songs queued next.</div>`;
+    }
+
+    el.queueModalList.innerHTML = html;
+
+    // Click to play any track from queue
+    el.queueModalList.querySelectorAll('.queue-item-row').forEach(row => {
+      row.addEventListener('click', (e) => {
+        if (e.target.closest('.btn-remove-queue-item')) return;
+        const qIdx = parseInt(row.dataset.queueIndex, 10);
+        if (!isNaN(qIdx) && qIdx >= 0 && qIdx < queue.length) {
+          player.setQueue(queue, qIdx, true);
+          renderQueueList();
+        }
+      });
+    });
+
+    // Remove single track from queue
+    el.queueModalList.querySelectorAll('.btn-remove-queue-item').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const qIdx = parseInt(btn.dataset.queueIndex, 10);
+        if (!isNaN(qIdx) && qIdx >= 0 && qIdx < queue.length) {
+          player.removeFromQueue(qIdx);
+          showToast('Removed from queue', 'info');
+          renderQueueList();
+        }
+      });
+    });
+  }
+
+  function openQueueModal() {
+    if (!el.queueModal) return;
+    renderQueueList();
+    el.queueModal.style.display = 'flex';
+  }
+
+  function closeQueueModal() {
+    if (el.queueModal) el.queueModal.style.display = 'none';
+  }
+
   // Sync User Header & Sidebar Avatars
   function updateUserIdentityUI(user) {
     if (user) {
@@ -757,14 +858,21 @@ async function initApp() {
 
     // Event: "Play All" for Top Artist songs
     const playAllArtistBtn = document.getElementById('btn-play-all-artist');
-    if (playAllArtistBtn && artistSongs.length > 0) {
+    if (playAllArtistBtn) {
       playAllArtistBtn.addEventListener('click', () => {
         if (AuthManager.isGuest()) {
           openAuthModal('🔒 Please sign in to stream music on EMBER.', true);
           return;
         }
-        player.setQueue(artistSongs, 0, true);
-        showToast(`Playing ${topArtist} mix`, 'success');
+        const currentSongs = (state.artistRecommendationsCache && topArtist && state.artistRecommendationsCache[topArtist])
+          || artistSongs
+          || [];
+        if (currentSongs.length > 0) {
+          player.setQueue(currentSongs, 0, true);
+          showToast(`Playing ${topArtist} mix`, 'success');
+        } else {
+          showToast(`Loading songs for ${topArtist || 'artist'}...`, 'info');
+        }
       });
     }
 
@@ -1255,10 +1363,12 @@ async function initApp() {
           }
         });
       }
+    }
 
-      const optionsBtn = document.getElementById('btn-playlist-options');
-      if (optionsBtn) {
-        optionsBtn.addEventListener('click', async () => {
+    const optionsBtn = document.getElementById('btn-playlist-options');
+    if (optionsBtn) {
+      optionsBtn.addEventListener('click', async () => {
+        if (isCustom) {
           const newName = prompt('Enter new playlist name:', playlist.title);
           if (newName && newName.trim() && newName.trim() !== playlist.title) {
             await DbManager.renamePlaylist(playlist.id, newName.trim());
@@ -1266,8 +1376,13 @@ async function initApp() {
             openPlaylistView(playlist.id);
             renderSidebarPlaylists();
           }
-        });
-      }
+        } else {
+          if (navigator.clipboard) {
+            navigator.clipboard.writeText(window.location.href);
+            showToast(`Playlist link copied to clipboard!`, 'success');
+          }
+        }
+      });
     }
 
     const playAllBtn = document.getElementById('btn-play-all-playlist');
@@ -1427,8 +1542,96 @@ async function initApp() {
       });
     });
 
-    // Create modal button
+    // Filter Chips Interactive Logic
+    const libPillPlaylists = document.getElementById('lib-pill-playlists');
+    const libPillArtists = document.getElementById('lib-pill-artists');
+    const libPillAlbums = document.getElementById('lib-pill-albums');
+    const customPlaylistsWrap = document.getElementById('library-custom-playlists');
     const openCreateBtn = document.getElementById('btn-open-create-modal');
+
+    function setActiveLibPill(activeBtn) {
+      [libPillPlaylists, libPillArtists, libPillAlbums].forEach(p => p?.classList.remove('active'));
+      activeBtn?.classList.add('active');
+    }
+
+    libPillPlaylists?.addEventListener('click', () => {
+      setActiveLibPill(libPillPlaylists);
+      if (openCreateBtn) openCreateBtn.style.display = 'flex';
+      if (likedRow) likedRow.style.display = 'flex';
+      if (customPlaylistsWrap) {
+        customPlaylistsWrap.innerHTML = customPlaylists.map(pl => `
+          <div class="ember-song-row" data-playlist-id="${escapeHtml(pl.id)}" style="margin-bottom:8px; cursor:pointer;">
+            <div style="width:44px; height:44px; border-radius:8px; background:var(--bg-elevated); display:flex; align-items:center; justify-content:center; color:var(--text-white); flex-shrink:0;">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+            </div>
+            <div class="song-row-meta">
+              <div class="song-row-title">${escapeHtml(pl.name)}</div>
+              <div class="song-row-artist">${(pl.tracks || []).length} songs • By You</div>
+            </div>
+          </div>
+        `).join('');
+        customPlaylistsWrap.querySelectorAll('.ember-song-row').forEach(row => {
+          row.addEventListener('click', () => openPlaylistView(row.dataset.playlistId));
+        });
+      }
+    });
+
+    libPillArtists?.addEventListener('click', () => {
+      setActiveLibPill(libPillArtists);
+      if (openCreateBtn) openCreateBtn.style.display = 'none';
+      if (likedRow) likedRow.style.display = 'none';
+      const artistMap = {};
+      [...liked, ...customPlaylists.flatMap(p => p.tracks || [])].forEach(t => {
+        const a = cleanArtistName(t.artist, t.title);
+        if (a) artistMap[a] = (artistMap[a] || 0) + 1;
+      });
+      const artists = Object.entries(artistMap).sort((a,b) => b[1] - a[1]);
+      if (customPlaylistsWrap) {
+        if (artists.length === 0) {
+          customPlaylistsWrap.innerHTML = '<div style="text-align:center; padding:30px; color:var(--text-gray); font-size:0.8rem;">No saved artists found. Like songs or create playlists to build your collection!</div>';
+        } else {
+          customPlaylistsWrap.innerHTML = artists.map(([artName, count]) => `
+            <div class="ember-song-row lib-artist-item" data-artist="${escapeHtml(artName)}" style="margin-bottom:8px; cursor:pointer;">
+              <div style="width:44px; height:44px; border-radius:50%; background:var(--bg-elevated); display:flex; align-items:center; justify-content:center; color:#ff6b4a; font-weight:700; flex-shrink:0;">
+                ${escapeHtml(artName.slice(0, 2).toUpperCase())}
+              </div>
+              <div class="song-row-meta">
+                <div class="song-row-title">${escapeHtml(artName)}</div>
+                <div class="song-row-artist">${count} song${count > 1 ? 's' : ''} in your library</div>
+              </div>
+            </div>
+          `).join('');
+          customPlaylistsWrap.querySelectorAll('.lib-artist-item').forEach(item => {
+            item.addEventListener('click', () => {
+              state.searchQuery = item.dataset.artist;
+              switchTab('search', false);
+            });
+          });
+        }
+      }
+    });
+
+    libPillAlbums?.addEventListener('click', () => {
+      setActiveLibPill(libPillAlbums);
+      if (openCreateBtn) openCreateBtn.style.display = 'none';
+      if (likedRow) likedRow.style.display = 'none';
+      if (customPlaylistsWrap) {
+        customPlaylistsWrap.innerHTML = CURATED_PLAYLISTS.map(pl => `
+          <div class="ember-song-row" data-playlist-id="${escapeHtml(pl.id)}" style="margin-bottom:8px; cursor:pointer;">
+            <img class="song-row-thumb" src="${escapeHtml(pl.cover)}" alt="${escapeHtml(pl.title)}" style="border-radius:8px;">
+            <div class="song-row-meta">
+              <div class="song-row-title">${escapeHtml(pl.title)}</div>
+              <div class="song-row-artist">${escapeHtml(pl.subtitle)}</div>
+            </div>
+          </div>
+        `).join('');
+        customPlaylistsWrap.querySelectorAll('.ember-song-row').forEach(row => {
+          row.addEventListener('click', () => openPlaylistView(row.dataset.playlistId));
+        });
+      }
+    });
+
+    // Create modal button
     if (openCreateBtn) {
       openCreateBtn.addEventListener('click', () => {
         el.createPlaylistModal.style.display = 'flex';
@@ -1789,6 +1992,17 @@ async function initApp() {
     }
   });
 
+  if (el.btnSheetOptions) {
+    el.btnSheetOptions.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (player.currentTrack) {
+        openAddToPlaylistModal(player.currentTrack);
+      } else {
+        showToast('No song is currently playing', 'info');
+      }
+    });
+  }
+
   // Music Player Scrubber & Timeline Dragging
   function getSafeDuration() {
     if (typeof player.getDuration === 'function') {
@@ -1983,6 +2197,68 @@ async function initApp() {
       if (el.desktopVolumeSlider) {
         el.desktopVolumeSlider.value = isMuted ? 0 : player.volume;
       }
+    });
+  }
+
+  // Video Mode Toggle (Desktop & Mobile Sheet)
+  function toggleVideoPlayer() {
+    if (!el.ytWrapper) return;
+    const isActive = el.ytWrapper.classList.toggle('video-active');
+    if (el.desktopVideoBtn) el.desktopVideoBtn.classList.toggle('active', isActive);
+    if (el.sheetToggleVideoBtn) el.sheetToggleVideoBtn.classList.toggle('active', isActive);
+    showToast(isActive ? 'Video mode enabled' : 'Video mode closed', 'info');
+  }
+
+  if (el.desktopVideoBtn) {
+    el.desktopVideoBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleVideoPlayer();
+    });
+  }
+  if (el.sheetToggleVideoBtn) {
+    el.sheetToggleVideoBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleVideoPlayer();
+    });
+  }
+  if (el.btnCloseVideo) {
+    el.btnCloseVideo.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (el.ytWrapper) el.ytWrapper.classList.remove('video-active');
+      if (el.desktopVideoBtn) el.desktopVideoBtn.classList.remove('active');
+      if (el.sheetToggleVideoBtn) el.sheetToggleVideoBtn.classList.remove('active');
+    });
+  }
+
+  // Desktop Expand Player Button
+  if (el.desktopExpandBtn) {
+    el.desktopExpandBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      el.sheet.classList.add('active');
+    });
+  }
+
+  // Queue Buttons (Desktop & Sheet)
+  if (el.desktopQueueBtn) {
+    el.desktopQueueBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openQueueModal();
+    });
+  }
+  if (el.sheetQueueBtn) {
+    el.sheetQueueBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openQueueModal();
+    });
+  }
+  if (el.btnCloseQueue) {
+    el.btnCloseQueue.addEventListener('click', () => closeQueueModal());
+  }
+  if (el.btnClearQueue) {
+    el.btnClearQueue.addEventListener('click', () => {
+      player.clearQueue();
+      showToast('Queue cleared', 'info');
+      renderQueueList();
     });
   }
 
@@ -2256,9 +2532,16 @@ async function initApp() {
 
   el.tabAuthLogin.addEventListener('click', () => setAuthMode('login'));
   el.tabAuthSignup.addEventListener('click', () => setAuthMode('signup'));
-  el.btnCloseAuthModal.addEventListener('click', () => closeAuthModal());
+  el.btnCloseAuthModal.addEventListener('click', () => closeAuthModal(true));
   if (el.btnGuestContinue) {
     el.btnGuestContinue.style.display = 'none';
+  }
+
+  if (el.authForm) {
+    el.authForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      el.btnAuthSubmit.click();
+    });
   }
 
   // Google Sign-In
@@ -2582,6 +2865,24 @@ async function initApp() {
     } catch (e) {
       alert(e.message);
     }
+  });
+
+  // Modal Backdrop Click Dismiss
+  [
+    el.authModal,
+    el.createPlaylistModal,
+    el.onboardingModal,
+    el.editProfileModal,
+    el.credentialsModal,
+    el.queueModal,
+    document.getElementById('add-to-playlist-modal')
+  ].forEach(modalEl => {
+    if (!modalEl) return;
+    modalEl.addEventListener('click', (e) => {
+      if (e.target === modalEl) {
+        modalEl.style.display = 'none';
+      }
+    });
   });
 
   /* ==========================================================================

@@ -318,6 +318,25 @@
       <div id="yt-player-target"></div>
     </div>
 
+    <!-- Play Queue Modal / Drawer -->
+    <div class="ember-modal-backdrop" id="queue-modal" style="display:none;">
+      <div class="ember-modal-card" style="max-width:440px; width:92%; max-height:85vh; display:flex; flex-direction:column;">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; flex-shrink:0;">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+            <h3 style="font-size:1.15rem; font-weight:800; color:var(--text-white); margin:0;">Play Queue</h3>
+          </div>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <button class="ember-pill" id="btn-clear-queue" style="font-size:0.72rem; padding:4px 10px;">Clear Queue</button>
+            <button class="header-icon-btn" id="btn-close-queue" title="Close Queue" style="width:28px; height:28px; padding:0; display:flex; align-items:center; justify-content:center; color:var(--text-gray);">✕</button>
+          </div>
+        </div>
+        <div id="queue-modal-list" style="overflow-y:auto; flex:1; display:flex; flex-direction:column; gap:6px; padding-right:4px;">
+          <!-- Dynamically populated queue items -->
+        </div>
+      </div>
+    </div>
+
     <!-- Create Playlist Modal -->
     <div class="ember-modal-backdrop" id="create-playlist-modal" style="display:none;">
       <div class="ember-modal-card">
