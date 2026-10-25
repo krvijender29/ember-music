@@ -5,14 +5,15 @@
  */
 
 const EmberConfig = {
-  // Firebase Web Client Configuration (Public API Keys only)
+  // Firebase Web Client Configuration
   FIREBASE: {
-    apiKey: window.__ENV__?.FIREBASE_API_KEY || "YOUR_FIREBASE_API_KEY",
-    authDomain: window.__ENV__?.FIREBASE_AUTH_DOMAIN || "YOUR_FIREBASE_AUTH_DOMAIN",
-    projectId: window.__ENV__?.FIREBASE_PROJECT_ID || "YOUR_FIREBASE_PROJECT_ID",
-    storageBucket: window.__ENV__?.FIREBASE_STORAGE_BUCKET || "YOUR_FIREBASE_STORAGE_BUCKET",
-    messagingSenderId: window.__ENV__?.FIREBASE_MESSAGING_SENDER_ID || "YOUR_FIREBASE_MESSAGING_SENDER_ID",
-    appId: window.__ENV__?.FIREBASE_APP_ID || "YOUR_FIREBASE_APP_ID"
+    apiKey: window.__ENV__?.FIREBASE_API_KEY || "AIzaSyAlgojP3zTxgbAVB8FhYW-_9R1zgdfHEjQ",
+    authDomain: window.__ENV__?.FIREBASE_AUTH_DOMAIN || "ember-dcb78.firebaseapp.com",
+    projectId: window.__ENV__?.FIREBASE_PROJECT_ID || "ember-dcb78",
+    storageBucket: window.__ENV__?.FIREBASE_STORAGE_BUCKET || "ember-dcb78.firebasestorage.app",
+    messagingSenderId: window.__ENV__?.FIREBASE_MESSAGING_SENDER_ID || "198177903871",
+    appId: window.__ENV__?.FIREBASE_APP_ID || "1:198177903871:web:cb12df447398536af628ca",
+    measurementId: window.__ENV__?.FIREBASE_MEASUREMENT_ID || "G-FWLW87Q0NW"
   },
 
   // Supabase PostgreSQL Configuration (Public Anon Key only - Never service_role)
