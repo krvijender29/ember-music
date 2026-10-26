@@ -554,6 +554,17 @@
     height: 100% !important;
   }
 
+  .ember-view-loader {
+    grid-area: main !important;
+    position: absolute !important;
+    inset: 0 !important;
+    top: 0 !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    border-radius: 0 !important;
+  }
+
   /* Hero Banner on Desktop */
   .good-morning-banner {
     height: 190px !important;

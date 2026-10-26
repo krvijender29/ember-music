@@ -720,6 +720,60 @@ async function initApp() {
   }
 
   /* ==========================================================================
+     View Transition Loading Screen Controller
+     ========================================================================== */
+  const viewLoader = document.getElementById('ember-view-loader');
+  const viewLoaderStatus = document.getElementById('view-loader-status');
+  let activeTransitionToken = 0;
+
+  async function triggerViewTransition(statusMessage, actionCallback) {
+    const token = ++activeTransitionToken;
+    if (viewLoader) {
+      if (viewLoaderStatus && statusMessage) {
+        viewLoaderStatus.textContent = statusMessage;
+      }
+      viewLoader.style.display = 'flex';
+      void viewLoader.offsetHeight; // Force reflow
+      viewLoader.classList.add('active');
+    }
+    if (el.viewport) {
+      el.viewport.classList.add('view-transitioning');
+    }
+
+    const minDuration = 280; // minimum duration so animation is visibly smooth
+    const startTime = performance.now();
+
+    try {
+      if (typeof actionCallback === 'function') {
+        await actionCallback();
+      }
+    } catch (err) {
+      console.warn('[Ember] View transition error:', err);
+    } finally {
+      const elapsed = performance.now() - startTime;
+      const remaining = Math.max(0, minDuration - elapsed);
+
+      setTimeout(() => {
+        if (token !== activeTransitionToken) return;
+
+        if (viewLoader) {
+          viewLoader.classList.remove('active');
+        }
+        if (el.viewport) {
+          el.viewport.classList.remove('view-transitioning');
+        }
+        setTimeout(() => {
+          if (token !== activeTransitionToken) return;
+          if (viewLoader && !viewLoader.classList.contains('active')) {
+            viewLoader.style.display = 'none';
+          }
+        }, 250);
+      }, remaining);
+    }
+  }
+  window.triggerViewTransition = triggerViewTransition;
+
+  /* ==========================================================================
      Screen 5: HOME VIEW (Personalized History & Artist-Driven Recommendations)
      ========================================================================== */
   async function renderHomeView() {
@@ -1352,7 +1406,7 @@ async function initApp() {
       });
     }
 
-    function executeSearch(query) {
+    async function executeSearch(query) {
       state.searchQuery = query;
       if (searchInput) searchInput.value = query;
       if (el.desktopTopSearchInput) el.desktopTopSearchInput.value = query;
@@ -1360,7 +1414,7 @@ async function initApp() {
       if (searchDropdown) searchDropdown.style.display = 'none';
       const dDropdown = document.getElementById('desktop-autocomplete-dropdown');
       if (dDropdown) dDropdown.style.display = 'none';
-      triggerSearch(query);
+      return await triggerSearch(query);
     }
 
     function renderBrowseGenresGrid(recents = []) {
@@ -1724,7 +1778,11 @@ async function initApp() {
           dynamicResults.querySelectorAll('.search-artist-card').forEach(card => {
             card.addEventListener('click', () => {
               const artistName = card.dataset.artistName;
-              if (artistName) switchCategoryFilter('songs', `${artistName} songs`);
+              if (artistName) {
+                triggerViewTransition(`Loading ${artistName} Songs...`, async () => {
+                  await switchCategoryFilter('songs', `${artistName} songs`);
+                });
+              }
             });
           });
 
@@ -1824,7 +1882,11 @@ async function initApp() {
           dynamicResults.querySelectorAll('.search-artist-card').forEach(card => {
             card.addEventListener('click', () => {
               const artistName = card.dataset.artistName;
-              if (artistName) switchCategoryFilter('songs', `${artistName} songs`);
+              if (artistName) {
+                triggerViewTransition(`Loading ${artistName} Songs...`, async () => {
+                  await switchCategoryFilter('songs', `${artistName} songs`);
+                });
+              }
             });
           });
 
@@ -1937,7 +1999,7 @@ async function initApp() {
       }
     }
 
-    function switchCategoryFilter(targetFilter, newQuery = '') {
+    async function switchCategoryFilter(targetFilter, newQuery = '') {
       state.searchFilter = targetFilter;
       document.querySelectorAll('.filter-pills-row .ember-pill').forEach(p => {
         p.classList.toggle('active', p.dataset.filter === targetFilter);
@@ -1947,7 +2009,7 @@ async function initApp() {
         if (searchInput) searchInput.value = newQuery;
         if (el.desktopTopSearchInput) el.desktopTopSearchInput.value = newQuery;
       }
-      triggerSearch(state.searchQuery);
+      return await triggerSearch(state.searchQuery);
     }
 
     function renderEmptySearchState(q) {
@@ -1965,7 +2027,11 @@ async function initApp() {
       `;
     }
 
-    window.emberExecuteSearch = executeSearch;
+    window.emberExecuteSearch = (query) => {
+      triggerViewTransition(`Searching ${query}...`, async () => {
+        await executeSearch(query);
+      });
+    };
 
     if (state.searchQuery.trim()) {
       triggerSearch(state.searchQuery.trim());
@@ -1978,67 +2044,68 @@ async function initApp() {
      Screen 7: PLAYLIST & ALBUM VIEW (Personal & YouTube Music Collections)
      ========================================================================== */
   async function openPlaylistView(playlistId, autoPlay = false, catalogMeta = null) {
-    state.previousTab = state.currentTab;
-    state.currentTab = 'playlist';
-    state.activePlaylistId = playlistId;
+    const plName = catalogMeta?.title || 'Playlist';
+    await triggerViewTransition(`Loading ${plName}...`, async () => {
+      state.previousTab = state.currentTab;
+      state.currentTab = 'playlist';
+      state.activePlaylistId = playlistId;
 
-    if (el.viewport) el.viewport.scrollTop = 0;
-    if (typeof updateSidebarActiveUI === 'function') updateSidebarActiveUI('playlist');
-    if (typeof updateHeaderSearchUI === 'function') updateHeaderSearchUI('playlist');
+      if (el.viewport) el.viewport.scrollTop = 0;
+      if (typeof updateSidebarActiveUI === 'function') updateSidebarActiveUI('playlist');
+      if (typeof updateHeaderSearchUI === 'function') updateHeaderSearchUI('playlist');
 
-    let playlist = null;
-    let playlistTracks = [];
-    let isCustom = true;
+      let playlist = null;
+      let playlistTracks = [];
+      let isCustom = true;
 
-    let customPlaylists = StorageManager.getPlaylists();
-    let custom = customPlaylists.find(p => p.id === playlistId);
-    const user = AuthManager.getCurrentUser();
-    if (!custom && user?.uid) {
-      try {
-        customPlaylists = await DbManager.getPlaylists(user.uid);
-        custom = customPlaylists.find(p => p.id === playlistId);
-      } catch (_) {}
-    }
-
-    if (custom) {
-      playlist = {
-        id: custom.id,
-        title: custom.name,
-        subtitle: 'Custom Playlist',
-        cover: 'assets/images/ember_banner.jpg',
-        description: custom.description || 'Your personalized collection on Ember.',
-        stats: `${(custom.tracks || []).length} songs`
-      };
-      playlistTracks = custom.tracks || [];
-    } else {
-      // YouTube Music playlist or album collection
-      isCustom = false;
-      showToast('Loading collection tracks...', 'info');
-      try {
-        playlistTracks = await YouTubeAPI.getPlaylistTracks(playlistId, 50);
-      } catch (err) {
-        console.warn('Failed to load playlist tracks:', err);
+      let customPlaylists = StorageManager.getPlaylists();
+      let custom = customPlaylists.find(p => p.id === playlistId);
+      const user = AuthManager.getCurrentUser();
+      if (!custom && user?.uid) {
+        try {
+          customPlaylists = await DbManager.getPlaylists(user.uid);
+          custom = customPlaylists.find(p => p.id === playlistId);
+        } catch (_) {}
       }
 
-      if (playlistTracks && playlistTracks.length > 0) {
+      if (custom) {
         playlist = {
-          id: playlistId,
-          title: catalogMeta?.title || playlistTracks[0]?.channelTitle || 'YouTube Music Collection',
-          subtitle: catalogMeta?.subtitle || playlistTracks[0]?.channelTitle || 'Album • YouTube Music',
-          cover: catalogMeta?.cover || catalogMeta?.thumbnail || playlistTracks[0]?.thumbnail || 'assets/images/ember_banner.jpg',
-          description: catalogMeta?.description || 'Curated album and playlist collection discovered via YouTube Music.',
-          stats: `${playlistTracks.length} songs`
+          id: custom.id,
+          title: custom.name,
+          subtitle: 'Custom Playlist',
+          cover: 'assets/images/ember_banner.jpg',
+          description: custom.description || 'Your personalized collection on Ember.',
+          stats: `${(custom.tracks || []).length} songs`
         };
+        playlistTracks = custom.tracks || [];
+      } else {
+        // YouTube Music playlist or album collection
+        isCustom = false;
+        try {
+          playlistTracks = await YouTubeAPI.getPlaylistTracks(playlistId, 50);
+        } catch (err) {
+          console.warn('Failed to load playlist tracks:', err);
+        }
+
+        if (playlistTracks && playlistTracks.length > 0) {
+          playlist = {
+            id: playlistId,
+            title: catalogMeta?.title || playlistTracks[0]?.channelTitle || 'YouTube Music Collection',
+            subtitle: catalogMeta?.subtitle || playlistTracks[0]?.channelTitle || 'Album • YouTube Music',
+            cover: catalogMeta?.cover || catalogMeta?.thumbnail || playlistTracks[0]?.thumbnail || 'assets/images/ember_banner.jpg',
+            description: catalogMeta?.description || 'Curated album and playlist collection discovered via YouTube Music.',
+            stats: `${playlistTracks.length} songs`
+          };
+        }
       }
-    }
 
-    if (!playlist) {
-      showToast('Playlist not found', 'warning');
-      switchTab('library');
-      return;
-    }
+      if (!playlist) {
+        showToast('Playlist not found', 'warning');
+        switchTab('library');
+        return;
+      }
 
-    el.viewport.innerHTML = `
+      el.viewport.innerHTML = `
       <!-- Playlist Top Nav Row -->
       <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
         <button class="header-icon-btn" id="btn-playlist-back" title="Back">
@@ -2152,74 +2219,77 @@ async function initApp() {
     if (autoPlay && playlistTracks.length > 0) {
       player.setQueue(playlistTracks, 0, true);
     }
+    });
   }
 
   /* ==========================================================================
      Screen 8: DEDICATED LIKED SONGS VIEW (Requirement 6)
      ========================================================================== */
   async function openLikedSongsView() {
-    state.previousTab = state.currentTab;
-    state.currentTab = 'liked-songs';
+    await triggerViewTransition('Loading Liked Songs...', async () => {
+      state.previousTab = state.currentTab;
+      state.currentTab = 'liked-songs';
 
-    if (el.viewport) el.viewport.scrollTop = 0;
-    if (typeof updateSidebarActiveUI === 'function') updateSidebarActiveUI('liked-songs');
-    if (typeof updateHeaderSearchUI === 'function') updateHeaderSearchUI('liked-songs');
+      if (el.viewport) el.viewport.scrollTop = 0;
+      if (typeof updateSidebarActiveUI === 'function') updateSidebarActiveUI('liked-songs');
+      if (typeof updateHeaderSearchUI === 'function') updateHeaderSearchUI('liked-songs');
 
-    const user = AuthManager.getCurrentUser();
-    const likedTracks = await DbManager.getLikedSongs(user?.uid);
+      const user = AuthManager.getCurrentUser();
+      const likedTracks = await DbManager.getLikedSongs(user?.uid);
 
-    el.viewport.innerHTML = `
-      <!-- Top Nav -->
-      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
-        <button class="header-icon-btn" id="btn-liked-back" title="Back">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
-        </button>
-        <span style="font-size:0.85rem; font-weight:600; color:var(--text-gray); text-transform:uppercase;">Collection</span>
-        <div style="width:36px;"></div>
-      </div>
-
-      <!-- Hero Banner -->
-      <div class="playlist-hero-header">
-        <div class="playlist-cover-big" style="background:linear-gradient(135deg, #2b2b48 0%, #0c0c14 100%); display:flex; align-items:center; justify-content:center; border:1px solid var(--border-card);">
-          <svg width="60" height="60" viewBox="0 0 24 24" fill="#ffffff"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
-        </div>
-        <h2 class="playlist-info-title">Liked Songs</h2>
-        <div class="playlist-info-creator">${user ? escapeHtml(user.displayName) : 'Guest Collection'}</div>
-        <div style="font-size:0.75rem; color:var(--text-dim); margin-bottom:16px;">
-          ${likedTracks.length} ${likedTracks.length === 1 ? 'song' : 'songs'} saved
-        </div>
-
-        <div class="playlist-action-bar">
-          <div></div>
-          <button class="btn-big-play-playlist" id="btn-play-all-liked" title="Play All Liked">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4"/></svg>
+      el.viewport.innerHTML = `
+        <!-- Top Nav -->
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
+          <button class="header-icon-btn" id="btn-liked-back" title="Back">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
           </button>
+          <span style="font-size:0.85rem; font-weight:600; color:var(--text-gray); text-transform:uppercase;">Collection</span>
+          <div style="width:36px;"></div>
         </div>
-      </div>
 
-      <!-- Songs List -->
-      <div class="song-list-container" id="liked-tracks-container">
-        ${likedTracks.length > 0
-          ? likedTracks.map((track, i) => createSongRowHtml(track, i)).join('')
-          : '<div style="text-align:center; padding:48px 20px; color:var(--text-gray); font-size:0.88rem;">No liked songs yet.<br><span style="font-size:0.75rem; color:var(--text-dim);">Tap the heart icon on any track to save it here.</span></div>'
+        <!-- Hero Banner -->
+        <div class="playlist-hero-header">
+          <div class="playlist-cover-big" style="background:linear-gradient(135deg, #2b2b48 0%, #0c0c14 100%); display:flex; align-items:center; justify-content:center; border:1px solid var(--border-card);">
+            <svg width="60" height="60" viewBox="0 0 24 24" fill="#ffffff"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+          </div>
+          <h2 class="playlist-info-title">Liked Songs</h2>
+          <div class="playlist-info-creator">${user ? escapeHtml(user.displayName) : 'Guest Collection'}</div>
+          <div style="font-size:0.75rem; color:var(--text-dim); margin-bottom:16px;">
+            ${likedTracks.length} ${likedTracks.length === 1 ? 'song' : 'songs'} saved
+          </div>
+
+          <div class="playlist-action-bar">
+            <div></div>
+            <button class="btn-big-play-playlist" id="btn-play-all-liked" title="Play All Liked">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Songs List -->
+        <div class="song-list-container" id="liked-tracks-container">
+          ${likedTracks.length > 0
+            ? likedTracks.map((track, i) => createSongRowHtml(track, i)).join('')
+            : '<div style="text-align:center; padding:48px 20px; color:var(--text-gray); font-size:0.88rem;">No liked songs yet.<br><span style="font-size:0.75rem; color:var(--text-dim);">Tap the heart icon on any track to save it here.</span></div>'
+          }
+        </div>
+      `;
+
+      document.getElementById('btn-liked-back')?.addEventListener('click', () => {
+        switchTab(state.previousTab || 'library');
+      });
+
+      document.getElementById('btn-play-all-liked')?.addEventListener('click', () => {
+        if (likedTracks.length > 0) {
+          player.setQueue(likedTracks, 0, true);
+          showToast('Playing Liked Songs', 'success');
+        } else {
+          showToast('No liked songs in your collection yet', 'info');
         }
-      </div>
-    `;
+      });
 
-    document.getElementById('btn-liked-back')?.addEventListener('click', () => {
-      switchTab(state.previousTab || 'library');
+      bindSongRows(document.getElementById('liked-tracks-container'), likedTracks);
     });
-
-    document.getElementById('btn-play-all-liked')?.addEventListener('click', () => {
-      if (likedTracks.length > 0) {
-        player.setQueue(likedTracks, 0, true);
-        showToast('Playing Liked Songs', 'success');
-      } else {
-        showToast('No liked songs in your collection yet', 'info');
-      }
-    });
-
-    bindSongRows(document.getElementById('liked-tracks-container'), likedTracks);
   }
 
   /* ==========================================================================
@@ -2361,8 +2431,11 @@ async function initApp() {
           `).join('');
           customPlaylistsWrap.querySelectorAll('.lib-artist-item').forEach(item => {
             item.addEventListener('click', () => {
-              state.searchQuery = item.dataset.artist;
-              switchTab('search', false);
+              const artist = item.dataset.artist;
+              triggerViewTransition(`Loading ${artist} Songs...`, async () => {
+                state.searchQuery = artist;
+                await switchTab('search', false);
+              });
             });
           });
         }
@@ -2383,10 +2456,13 @@ async function initApp() {
             </div>
           </div>
         `).join('');
-        customPlaylistsWrap.querySelectorAll('.ember-song-row').forEach(row => {
+        customPlaylistsWrap.querySelectorAll('.ember-song-row[data-genre]').forEach(row => {
           row.addEventListener('click', () => {
-            state.searchQuery = row.dataset.genre;
-            switchTab('search', false);
+            const genre = row.dataset.genre;
+            triggerViewTransition(`Loading ${genre}...`, async () => {
+              state.searchQuery = genre;
+              await switchTab('search', false);
+            });
           });
         });
       }
@@ -2574,7 +2650,7 @@ async function initApp() {
     }
   }
 
-  function switchTab(tabName, autoFocusSearch = false) {
+  async function switchTab(tabName, autoFocusSearch = false) {
     if (AuthManager.isGuest() && (tabName === 'library' || tabName === 'profile' || tabName === 'recently-played')) {
       openAuthModal('🔒 Please sign in to access ' + (tabName === 'library' ? 'Your Library' : 'Profile') + '.', true);
       return;
@@ -2599,39 +2675,54 @@ async function initApp() {
     // Header compact search bar: ONLY visible on 'home' tab
     updateHeaderSearchUI(tabName);
 
-    switch (tabName) {
-      case 'home':
-        renderHomeView();
-        break;
-      case 'search':
-        renderSearchView(autoFocusSearch);
-        break;
-      case 'explore':
-        state.searchQuery = '';
-        state.searchFilter = 'all';
-        renderSearchView(false);
-        break;
-      case 'artists':
-        state.searchFilter = 'artists';
-        renderSearchView(true);
-        break;
-      case 'albums':
-        state.searchFilter = 'albums';
-        renderSearchView(true);
-        break;
-      case 'recently-played':
-      case 'profile':
-        renderProfileView();
-        break;
-      case 'library':
-        renderLibraryView();
-        break;
-      case 'liked-songs':
-        openLikedSongsView();
-        break;
-      default:
-        renderHomeView();
-    }
+    const tabMessages = {
+      'home': 'Loading Soundscape...',
+      'search': 'Searching Soundscapes...',
+      'explore': 'Exploring Music...',
+      'artists': 'Discovering Artists...',
+      'albums': 'Exploring Albums...',
+      'library': 'Opening Your Library...',
+      'profile': 'Opening Profile...',
+      'recently-played': 'Loading History...',
+      'liked-songs': 'Loading Liked Songs...'
+    };
+    const message = tabMessages[tabName] || 'Loading...';
+
+    await triggerViewTransition(message, async () => {
+      switch (tabName) {
+        case 'home':
+          await renderHomeView();
+          break;
+        case 'search':
+          await renderSearchView(autoFocusSearch);
+          break;
+        case 'explore':
+          state.searchQuery = '';
+          state.searchFilter = 'all';
+          await renderSearchView(false);
+          break;
+        case 'artists':
+          state.searchFilter = 'artists';
+          await renderSearchView(true);
+          break;
+        case 'albums':
+          state.searchFilter = 'albums';
+          await renderSearchView(true);
+          break;
+        case 'recently-played':
+        case 'profile':
+          await renderProfileView();
+          break;
+        case 'library':
+          await renderLibraryView();
+          break;
+        case 'liked-songs':
+          await openLikedSongsView();
+          break;
+        default:
+          await renderHomeView();
+      }
+    });
   }
   window.switchTab = switchTab;
 
@@ -3000,8 +3091,10 @@ async function initApp() {
         const art = cleanArtistName(track.artist || track.channelTitle, track.title);
         closeNowPlayingSheet();
         if (art && typeof window.emberExecuteSearch === 'function') {
-          switchTab('search', false);
-          window.emberExecuteSearch(art);
+          triggerViewTransition(`Loading ${art} Songs...`, async () => {
+            await switchTab('search', false);
+            await window.emberExecuteSearch(art);
+          });
         }
       }
     });
