@@ -237,7 +237,7 @@ body::before {
 }
 
 .brand-title-group h1 span {
-  color: #ffffff;
+  color: var(--accent-primary);
 }
 
 .brand-title-group p {
