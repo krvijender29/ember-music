@@ -708,11 +708,12 @@ async function initApp() {
     if (typeof updateHeaderSearchUI === 'function') updateHeaderSearchUI('home');
     const user = AuthManager.getCurrentUser();
 
-    // 1. Concurrently load user listening history, preferences, and recommendations
-    const [recentHistory, prefs, recommendedTracks] = await Promise.all([
+    // 1. Concurrently load user listening history, preferences, recommendations, and live global charts
+    const [recentHistory, prefs, recommendedTracks, globalCharts] = await Promise.all([
       DbManager.getListeningHistory(user?.uid, 14).catch(() => []),
       DbManager.getPreferences(user?.uid).catch(() => null),
-      DbManager.getRecommendations(user?.uid, DEFAULT_TRACKS).catch(() => DEFAULT_TRACKS)
+      DbManager.getRecommendations(user?.uid, DEFAULT_TRACKS).catch(() => DEFAULT_TRACKS),
+      fetch('/api/charts?country=us&limit=20').then(r => r.json()).catch(() => ({ results: [] }))
     ]);
 
     // Safety guard if user navigated away during load
@@ -842,6 +843,38 @@ async function initApp() {
           </div>
         `).join('')}
       </div>
+
+      <!-- Apple Music Global Top Charts (Spotube & BlackHole Engine) -->
+      ${(() => {
+        const chartTracks = (globalCharts && Array.isArray(globalCharts.results) && globalCharts.results.length > 0)
+          ? globalCharts.results
+          : [];
+        if (chartTracks.length === 0) return '';
+        return `
+          <div class="section-title-row" style="margin-top:24px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="color:#fc3c44; font-size:1.1rem; line-height:1;"></span>
+              <h3>Global Top Charts</h3>
+            </div>
+            <button class="section-see-all" id="btn-play-all-charts" style="background:none; border:none; cursor:pointer;">Play All &gt;</button>
+          </div>
+          <div class="horizontal-card-scroll" id="home-charts-scroll">
+            ${chartTracks.slice(0, 8).map((track, i) => `
+              <div class="ember-music-card chart-song-card" data-chart-index="${i}" title="${escapeHtml(track.title)}" style="cursor:pointer;">
+                <div class="card-img-wrapper">
+                  <img src="${escapeHtml(track.thumbnail || 'assets/images/ember_banner.jpg')}" alt="${escapeHtml(track.title)}">
+                  <span style="position:absolute; bottom:6px; left:6px; background:rgba(0,0,0,0.78); backdrop-filter:blur(6px); color:#ff6b4a; font-size:0.68rem; font-weight:800; padding:2px 6px; border-radius:6px; border:1px solid rgba(255,107,74,0.3);">#${i + 1}</span>
+                  <button class="card-play-hover-btn" data-play-chart-index="${i}" title="Play ${escapeHtml(track.title)}">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 18 12 6 20 6 4"/></svg>
+                  </button>
+                </div>
+                <div class="card-title">${escapeHtml(track.title)}</div>
+                <div class="card-subtitle">${escapeHtml(cleanArtistName(track.artist, track.title) || 'Unknown')}</div>
+              </div>
+            `).join('')}
+          </div>
+        `;
+      })()}
 
       <!-- Artist Suggestion Section: Because You Listened to {topArtist} -->
       <div id="home-artist-section" style="${topArtist ? 'display:block;' : 'display:none;'}">
@@ -1012,6 +1045,36 @@ async function initApp() {
           showToast('Playing your recent history', 'success');
         }
       });
+    }
+
+    // Event: Apple Music Global Charts cards click & Play All
+    const chartTracks = (globalCharts && Array.isArray(globalCharts.results)) ? globalCharts.results : [];
+    if (chartTracks.length > 0) {
+      document.querySelectorAll('#home-charts-scroll .chart-song-card').forEach(card => {
+        card.addEventListener('click', () => {
+          if (AuthManager.isGuest()) {
+            openAuthModal('🔒 Please sign in to stream music on EMBER.', true);
+            return;
+          }
+          const idx = parseInt(card.dataset.chartIndex, 10);
+          if (!isNaN(idx) && chartTracks[idx]) {
+            player.setQueue(chartTracks, idx, true);
+            showToast(`Playing "${chartTracks[idx].title}"`, 'success');
+          }
+        });
+      });
+
+      const playAllChartsBtn = document.getElementById('btn-play-all-charts');
+      if (playAllChartsBtn) {
+        playAllChartsBtn.addEventListener('click', () => {
+          if (AuthManager.isGuest()) {
+            openAuthModal('🔒 Please sign in to stream music on EMBER.', true);
+            return;
+          }
+          player.setQueue(chartTracks, 0, true);
+          showToast('Playing Apple Music Global Top 50', 'success');
+        });
+      }
     }
 
     // Event: "Play All" for Top Artist songs
@@ -1333,10 +1396,40 @@ async function initApp() {
         </div>
       ` : '';
 
-      return recentsHtml + trendingHtml + genresHtml;
+      const spotifyBannerHtml = `
+        <div class="spotify-quick-import-card" id="search-spotify-import-banner" style="background: linear-gradient(135deg, rgba(29, 185, 84, 0.16) 0%, rgba(24, 24, 27, 0.8) 100%); border: 1px solid rgba(29, 185, 84, 0.35); border-radius: 16px; padding: 14px 18px; display: flex; align-items: center; justify-content: space-between; margin-bottom: 22px; cursor: pointer; transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);">
+          <div style="display: flex; align-items: center; gap: 14px; min-width: 0;">
+            <div style="width: 40px; height: 40px; border-radius: 50%; background: #1DB954; display: flex; align-items: center; justify-content: center; flex-shrink: 0; box-shadow: 0 4px 14px rgba(29, 185, 84, 0.35);">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="#000"><path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm4.586 14.424c-.18.295-.563.387-.857.207-2.35-1.435-5.308-1.76-8.793-.963-.335.077-.67-.133-.746-.468-.077-.334.132-.67.467-.746 3.808-.87 7.076-.496 9.722 1.115.294.18.386.562.207.855zm1.225-2.724c-.226.367-.706.482-1.072.257-2.687-1.652-6.785-2.131-9.965-1.166-.413.127-.849-.106-.974-.517-.125-.413.108-.849.52-.974 3.632-1.102 8.147-.568 11.234 1.328.366.226.48.707.257 1.072zm.105-2.835C14.692 8.95 9.375 8.775 6.297 9.71c-.493.15-1.016-.13-1.165-.624-.15-.493.13-1.016.624-1.165 3.532-1.073 9.404-.866 13.115 1.338.445.264.59.838.327 1.282-.264.443-.838.59-1.282.324z"/></svg>
+            </div>
+            <div style="min-width: 0;">
+              <div style="font-weight: 700; font-size: 0.92rem; color: #fff; margin-bottom: 2px;">Import Spotify Playlist</div>
+              <div style="font-size: 0.74rem; color: var(--text-gray); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Paste any public Spotify link to import &amp; stream all tracks in 320kbps</div>
+            </div>
+          </div>
+          <button class="btn-import-spotify-cta" style="background: #1DB954; color: #000; border: none; font-size: 0.76rem; font-weight: 700; padding: 7px 15px; border-radius: 20px; cursor: pointer; flex-shrink: 0; margin-left: 12px;">Import</button>
+        </div>
+      `;
+
+      return recentsHtml + spotifyBannerHtml + trendingHtml + genresHtml;
     }
 
     function bindBrowseCards() {
+      // 0. Spotify Import Banner Click
+      const spotifyBanner = document.getElementById('search-spotify-import-banner');
+      if (spotifyBanner) {
+        spotifyBanner.addEventListener('click', () => {
+          const modal = document.getElementById('import-spotify-modal');
+          const input = document.getElementById('spotify-import-url');
+          if (modal) {
+            modal.style.display = 'flex';
+            if (input) {
+              input.value = '';
+              input.focus();
+            }
+          }
+        });
+      }
       // 1. Recent Search Chips
       document.querySelectorAll('.recent-search-chip').forEach(chip => {
         chip.addEventListener('click', (e) => {
@@ -3015,6 +3108,65 @@ async function initApp() {
       el.newPlaylistTitleInput.value = '';
       el.newPlaylistTitleInput.focus();
     });
+  }
+
+  // Spotube/BlackHole Spotify Playlist Import Modal
+  const btnImportSpotify = document.getElementById('sidebar-import-spotify-btn');
+  const modalImportSpotify = document.getElementById('import-spotify-modal');
+  const inputImportSpotify = document.getElementById('spotify-import-url');
+  const btnCancelSpotifyImport = document.getElementById('btn-cancel-spotify-import');
+  const btnConfirmSpotifyImport = document.getElementById('btn-confirm-spotify-import');
+
+  if (btnImportSpotify && modalImportSpotify) {
+    btnImportSpotify.addEventListener('click', () => {
+      modalImportSpotify.style.display = 'flex';
+      if (inputImportSpotify) {
+        inputImportSpotify.value = '';
+        inputImportSpotify.focus();
+      }
+    });
+
+    if (btnCancelSpotifyImport) {
+      btnCancelSpotifyImport.addEventListener('click', () => {
+        modalImportSpotify.style.display = 'none';
+      });
+    }
+
+    if (btnConfirmSpotifyImport && inputImportSpotify) {
+      btnConfirmSpotifyImport.addEventListener('click', async () => {
+        const urlVal = inputImportSpotify.value.trim();
+        if (!urlVal) {
+          showToast('Please enter a Spotify playlist link or ID', 'info');
+          return;
+        }
+
+        btnConfirmSpotifyImport.textContent = 'Importing...';
+        btnConfirmSpotifyImport.disabled = true;
+
+        try {
+          const res = await fetch(`/api/spotify-import?url=${encodeURIComponent(urlVal)}`);
+          const data = await res.json();
+          if (data && data.success && data.playlist && data.results && data.results.length > 0) {
+            modalImportSpotify.style.display = 'none';
+            showToast(`Imported "${data.playlist.name}" (${data.results.length} songs)!`, 'success');
+
+            // Queue all tracks and start playback immediately!
+            player.queue = [...data.results];
+            player.queueIndex = 0;
+            player.notifyQueueChange();
+            player.loadTrack(data.results[0], true);
+            openPlaylistView(data.playlist.id, true, data.playlist);
+          } else {
+            showToast(data.error || 'Could not import Spotify playlist. Make sure it is public.', 'error');
+          }
+        } catch (e) {
+          showToast('Failed to import Spotify playlist', 'error');
+        } finally {
+          btnConfirmSpotifyImport.textContent = 'Import & Stream';
+          btnConfirmSpotifyImport.disabled = false;
+        }
+      });
+    }
   }
 
   document.querySelectorAll('.sidebar-playlist-link').forEach(link => {

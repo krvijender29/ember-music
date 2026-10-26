@@ -17,6 +17,9 @@ import os
 import sys
 import time
 import concurrent.futures
+import ssl
+
+SSL_CTX = ssl._create_unverified_context()
 
 SAAVN_API_BASE = "https://www.jiosaavn.com/api.php"
 
@@ -320,6 +323,167 @@ def saavn_get(call_name, extra_params=None):
 
 
 # ==============================================================================
+# Spotube & BlackHole Engine Helpers (iTunes / Apple Music + Spotify Importer)
+# ==============================================================================
+def itunes_search(query, entity="song", limit=20):
+    try:
+        params = {
+            "term": query,
+            "entity": entity,
+            "limit": limit
+        }
+        url = "https://itunes.apple.com/search?" + urllib.parse.urlencode(params)
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
+        with urllib.request.urlopen(req, context=SSL_CTX, timeout=6) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            results = data.get("results", [])
+            items = []
+            for it in results:
+                if entity == "song":
+                    tid = f"itunes_{it.get('trackId')}"
+                    title = it.get("trackName") or ""
+                    artist = it.get("artistName") or ""
+                    album = it.get("collectionName") or ""
+                    art = (it.get("artworkUrl100") or "").replace("100x100bb.jpg", "600x600bb.jpg")
+                    preview = it.get("previewUrl") or ""
+                    dur_ms = it.get("trackTimeMillis") or 0
+                    dur_sec = round(dur_ms / 1000) if dur_ms else 210
+                    mins = dur_sec // 60
+                    secs = dur_sec % 60
+                    items.append({
+                        "id": tid,
+                        "title": title,
+                        "artist": artist,
+                        "album": album,
+                        "thumbnail": art or "assets/images/ember_banner.jpg",
+                        "cover": art or "assets/images/ember_banner.jpg",
+                        "previewUrl": preview,
+                        "duration": f"{mins}:{secs:02d}",
+                        "source": "apple_music_itunes",
+                        "isSong": True,
+                        "type": "song"
+                    })
+                elif entity == "musicArtist":
+                    aid = f"itunes_art_{it.get('artistId')}"
+                    name = it.get("artistName") or ""
+                    items.append({
+                        "id": aid,
+                        "title": name,
+                        "thumbnail": "assets/images/ember_banner.jpg",
+                        "avatar": "assets/images/ember_banner.jpg",
+                        "role": it.get("primaryGenreName") or "Artist",
+                        "source": "apple_music_itunes",
+                        "type": "artist"
+                    })
+                elif entity == "album":
+                    al_id = f"itunes_al_{it.get('collectionId')}"
+                    title = it.get("collectionName") or ""
+                    artist = it.get("artistName") or ""
+                    art = (it.get("artworkUrl100") or "").replace("100x100bb.jpg", "600x600bb.jpg")
+                    items.append({
+                        "id": al_id,
+                        "title": title,
+                        "subtitle": artist,
+                        "thumbnail": art or "assets/images/ember_banner.jpg",
+                        "cover": art or "assets/images/ember_banner.jpg",
+                        "source": "apple_music_itunes",
+                        "isAlbum": True,
+                        "type": "album"
+                    })
+            return items
+    except Exception as e:
+        print(f"[iTunes Search Error] {e}")
+        return []
+
+
+def fetch_top_charts(country="us", limit=50):
+    try:
+        url = f"https://itunes.apple.com/{country}/rss/topsongs/limit={limit}/json"
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, context=SSL_CTX, timeout=6) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            entries = data.get("feed", {}).get("entry", [])
+            tracks = []
+            for idx, e in enumerate(entries):
+                title = e.get("im:name", {}).get("label") or ""
+                artist = e.get("im:artist", {}).get("label") or ""
+                album = e.get("im:collection", {}).get("im:name", {}).get("label") or ""
+                images = e.get("im:image", [])
+                art = images[-1].get("label") if images else ""
+                if art:
+                    art = art.replace("170x170bb.png", "600x600bb.jpg").replace("170x170bb.jpg", "600x600bb.jpg")
+                link = e.get("link", [])
+                preview = ""
+                if isinstance(link, list):
+                    for l in link:
+                        if l.get("im:contentType", {}).get("attributes", {}).get("term") == "Audio":
+                            preview = l.get("attributes", {}).get("href")
+                            break
+                tracks.append({
+                    "id": f"chart_{country}_{idx+1}",
+                    "title": title,
+                    "artist": artist,
+                    "album": album,
+                    "thumbnail": art or "assets/images/ember_banner.jpg",
+                    "cover": art or "assets/images/ember_banner.jpg",
+                    "previewUrl": preview,
+                    "rank": idx + 1,
+                    "source": "apple_top_chart"
+                })
+            return tracks
+    except Exception as e:
+        print(f"[Top Charts Error] {e}")
+        return []
+
+
+def fetch_spotify_playlist(input_str):
+    try:
+        m = re.search(r'playlist[/:]+([a-zA-Z0-9]+)', input_str)
+        pid = m.group(1) if m else input_str.strip()
+        url = f"https://open.spotify.com/embed/playlist/{pid}"
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
+        with urllib.request.urlopen(req, context=SSL_CTX, timeout=8) as r:
+            html_text = r.read().decode("utf-8")
+            m_json = re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', html_text)
+            if not m_json:
+                return None
+            data = json.loads(m_json.group(1))
+            entity = data.get("props", {}).get("pageProps", {}).get("state", {}).get("data", {}).get("entity", {})
+            title = entity.get("name") or "Imported Spotify Playlist"
+            cover_sources = entity.get("coverArt", {}).get("sources", [])
+            cover = cover_sources[-1].get("url") if cover_sources else ""
+            raw_tracks = entity.get("trackList", [])
+            tracks = []
+            for idx, t in enumerate(raw_tracks):
+                s_title = t.get("title") or ""
+                s_artist = t.get("subtitle") or ""
+                dur_ms = t.get("duration") or 0
+                dur_sec = round(dur_ms / 1000) if dur_ms else 200
+                mins = dur_sec // 60
+                secs = dur_sec % 60
+                tracks.append({
+                    "id": f"sp_{t.get('id') or idx}",
+                    "title": s_title,
+                    "artist": s_artist,
+                    "thumbnail": cover or "assets/images/ember_banner.jpg",
+                    "cover": cover or "assets/images/ember_banner.jpg",
+                    "duration": f"{mins}:{secs:02d}",
+                    "source": "spotify_import"
+                })
+            return {
+                "id": pid,
+                "name": title,
+                "title": title,
+                "cover": cover,
+                "trackCount": len(tracks),
+                "tracks": tracks
+            }
+    except Exception as e:
+        print(f"[Spotify Playlist Import Error] {e}")
+        return None
+
+
+# ==============================================================================
 # Vercel Serverless Handler
 # ==============================================================================
 class handler(BaseHTTPRequestHandler):
@@ -396,15 +560,37 @@ class handler(BaseHTTPRequestHandler):
                     return
 
             try:
+                # 1. Filter: SONGS
                 if search_filter == "songs":
-                    raw = saavn_get("search.getResults", {"q": query, "n": min(limit, 30), "p": 1})
-                    tracks = [clean_song_item(s) for s in raw.get("results", [])]
-                    tracks = [t for t in tracks if t.get("audioUrl")]
+                    def _fetch_saavn_songs():
+                        try:
+                            raw = saavn_get("search.getResults", {"q": query, "n": min(limit, 30), "p": 1})
+                            return [clean_song_item(s) for s in raw.get("results", []) if clean_song_item(s).get("audioUrl")]
+                        except Exception:
+                            return []
+
+                    def _fetch_itunes_songs():
+                        return itunes_search(query, entity="song", limit=min(limit, 20))
+
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+                        f_s = executor.submit(_fetch_saavn_songs)
+                        f_it = executor.submit(_fetch_itunes_songs)
+                        saavn_tracks = f_s.result()
+                        it_tracks = f_it.result()
+
+                    seen_titles = set(t["title"].lower().strip() for t in saavn_tracks)
+                    merged = list(saavn_tracks)
+                    for it in it_tracks:
+                        it_clean = it["title"].lower().strip()
+                        if it_clean not in seen_titles:
+                            seen_titles.add(it_clean)
+                            merged.append(it)
+
                     resp_data = {
                         "success": True,
                         "query": query,
                         "filter": "songs",
-                        "results": tracks,
+                        "results": merged,
                         "nextPageToken": ""
                     }
                     if not page_token:
@@ -412,6 +598,7 @@ class handler(BaseHTTPRequestHandler):
                     self.send_json(resp_data)
                     return
 
+                # 2. Filter: ARTISTS
                 elif search_filter == "artists":
                     raw = saavn_get("search.getArtistResults", {"q": query, "n": min(limit, 20), "p": 1})
                     artists = [clean_artist_item(a) for a in raw.get("results", [])]
@@ -427,6 +614,7 @@ class handler(BaseHTTPRequestHandler):
                     self.send_json(resp_data)
                     return
 
+                # 3. Filter: ALBUMS
                 elif search_filter == "albums":
                     raw = saavn_get("search.getAlbumResults", {"q": query, "n": min(limit, 20), "p": 1})
                     albums = [clean_album_item(al) for al in raw.get("results", [])]
@@ -442,6 +630,7 @@ class handler(BaseHTTPRequestHandler):
                     self.send_json(resp_data)
                     return
 
+                # 4. Filter: PLAYLISTS
                 elif search_filter == "playlists":
                     raw = saavn_get("search.getPlaylistResults", {"q": query, "n": min(limit, 20), "p": 1})
                     playlists = [clean_playlist_item(pl) for pl in raw.get("results", [])]
@@ -457,9 +646,13 @@ class handler(BaseHTTPRequestHandler):
                     self.send_json(resp_data)
                     return
 
+                # 5. Default: ALL TAB (Concurrent Parallel Fetching - Spotube & BlackHole Hybrid)
                 else:
                     def _fetch_songs():
                         return saavn_get("search.getResults", {"q": query, "n": 10, "p": 1})
+
+                    def _fetch_itunes():
+                        return itunes_search(query, entity="song", limit=10)
 
                     def _fetch_artists():
                         return saavn_get("search.getArtistResults", {"q": query, "n": 6, "p": 1})
@@ -470,24 +663,32 @@ class handler(BaseHTTPRequestHandler):
                     def _fetch_playlists():
                         return saavn_get("search.getPlaylistResults", {"q": query, "n": 6, "p": 1})
 
-                    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
                         f_songs = executor.submit(_fetch_songs)
+                        f_itunes = executor.submit(_fetch_itunes)
                         f_artists = executor.submit(_fetch_artists)
                         f_albums = executor.submit(_fetch_albums)
                         f_playlists = executor.submit(_fetch_playlists)
 
                         songs_raw = f_songs.result()
+                        itunes_songs = f_itunes.result()
                         artists_raw = f_artists.result()
                         albums_raw = f_albums.result()
                         playlists_raw = f_playlists.result()
 
-                    songs = [clean_song_item(s) for s in songs_raw.get("results", [])]
-                    songs = [s for s in songs if s.get("audioUrl")]
+                    songs = [clean_song_item(s) for s in songs_raw.get("results", []) if clean_song_item(s).get("audioUrl")]
+                    seen_titles = set(s["title"].lower().strip() for s in songs)
+                    for it in itunes_songs:
+                        it_clean = it["title"].lower().strip()
+                        if it_clean not in seen_titles:
+                            seen_titles.add(it_clean)
+                            songs.append(it)
 
                     artists = [clean_artist_item(a) for a in artists_raw.get("results", [])]
                     albums = [clean_album_item(al) for al in albums_raw.get("results", [])]
                     playlists = [clean_playlist_item(pl) for pl in playlists_raw.get("results", [])]
 
+                    # Match Top Result (Prioritize exact artist match or top track)
                     top_result = None
                     q_lower = query.lower()
                     if artists and (q_lower in artists[0]["title"].lower() or artists[0]["title"].lower() in q_lower):
@@ -499,7 +700,7 @@ class handler(BaseHTTPRequestHandler):
                         "success": True,
                         "query": query,
                         "filter": "all",
-                        "source": "saavn_cdn_320kbps",
+                        "source": "spotube_hybrid_320kbps",
                         "topResult": top_result,
                         "songs": songs,
                         "artists": artists,
@@ -585,6 +786,7 @@ class handler(BaseHTTPRequestHandler):
 
         # ----------------------------------------------------------------------
         # Route 6: /api/resolve?title=...&artist=...
+        # Spotube Audio Matcher: Resolves metadata to 320kbps Akamai CDN stream
         # ----------------------------------------------------------------------
         if path == "/api/resolve" or path.endswith("/resolve"):
             title = params.get("title", [""])[0].strip()
@@ -595,28 +797,68 @@ class handler(BaseHTTPRequestHandler):
                 return
 
             try:
-                raw = saavn_get("search.getResults", {"q": query, "n": 5, "p": 1})
+                raw = saavn_get("search.getResults", {"q": query, "n": 6, "p": 1})
                 tracks = [clean_song_item(s) for s in raw.get("results", []) if clean_song_item(s).get("audioUrl")]
                 if tracks:
-                    self.send_json({"success": True, "track": tracks[0]})
-                else:
-                    self.send_json({"success": False, "error": "No match found"}, status=404)
+                    self.send_json({"success": True, "source": "saavn_320kbps", "track": tracks[0]})
+                    return
+
+                if artist:
+                    raw_title = saavn_get("search.getResults", {"q": title, "n": 4, "p": 1})
+                    t_tracks = [clean_song_item(s) for s in raw_title.get("results", []) if clean_song_item(s).get("audioUrl")]
+                    if t_tracks:
+                        self.send_json({"success": True, "source": "saavn_320kbps", "track": t_tracks[0]})
+                        return
+
+                self.send_json({"success": False, "error": "No 320kbps match found"}, status=404)
             except Exception as e:
                 self.send_json({"success": False, "error": str(e)}, status=500)
+            return
+
+        # ----------------------------------------------------------------------
+        # Route 7: /api/charts?country=us|in&n=50
+        # Apple Music Real-Time Official Top Charts
+        # ----------------------------------------------------------------------
+        if path == "/api/charts" or path.endswith("/charts"):
+            country = params.get("country", ["us"])[0].lower().strip() or "us"
+            try:
+                limit_n = int(params.get("n", ["50"])[0])
+            except (ValueError, TypeError):
+                limit_n = 50
+            charts = fetch_top_charts(country=country, limit=limit_n)
+            self.send_json({"success": True, "country": country, "results": charts})
+            return
+
+        # ----------------------------------------------------------------------
+        # Route 8: /api/spotify-import?url=...
+        # Spotube/BlackHole Spotify Playlist Extractor
+        # ----------------------------------------------------------------------
+        if path == "/api/spotify-import" or path.endswith("/spotify-import"):
+            sp_url = params.get("url", [""])[0].strip() or params.get("id", [""])[0].strip()
+            if not sp_url:
+                self.send_json({"success": False, "error": "Spotify playlist URL or ID required"}, status=400)
+                return
+            playlist_data = fetch_spotify_playlist(sp_url)
+            if playlist_data:
+                self.send_json({"success": True, "playlist": playlist_data, "results": playlist_data.get("tracks", [])})
+            else:
+                self.send_json({"success": False, "error": "Failed to parse Spotify playlist. Ensure it is public."}, status=404)
             return
 
         # Default info
         self.send_json({
             "status": "online",
             "service": "Ember Direct CDN Music Discovery API",
-            "engine": "JioSaavn 320kbps Akamai CDN Engine",
+            "engine": "JioSaavn 320kbps Akamai CDN & Spotube Hybrid Engine",
             "endpoints": [
                 "/api/search?q={query}&filter={all|songs|artists|albums|playlists}",
                 "/api/suggestions?q={query}",
                 "/api/playlist-items?id={playlistId}",
                 "/api/artist-tracks?id={channelId}",
                 "/api/trending",
-                "/api/resolve?title={title}&artist={artist}"
+                "/api/resolve?title={title}&artist={artist}",
+                "/api/charts?country={us|in}",
+                "/api/spotify-import?url={spotifyPlaylistUrl}"
             ]
         })
 

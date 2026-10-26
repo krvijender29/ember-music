@@ -305,8 +305,14 @@ class MusicPlayer {
     if (this.onTrackChange) this.onTrackChange(track);
     this.updateMediaSession(track);
 
-    // Auto-resolve direct 320kbps CDN stream if missing (e.g. from history or Supabase)
+    // Auto-resolve direct 320kbps CDN stream if missing (Spotube / BlackHole resolver)
     if (!track.audioUrl && track.title) {
+      if (track.previewUrl && this.audio) {
+        this.activeEngine = 'audio';
+        this.audio.src = track.previewUrl;
+        if (autoPlay) this.play();
+      }
+
       try {
         const res = await fetch(`/api/resolve?title=${encodeURIComponent(track.title)}&artist=${encodeURIComponent(track.artist || '')}`);
         if (res.ok) {
@@ -314,6 +320,17 @@ class MusicPlayer {
           if (data && data.success && data.track && data.track.audioUrl) {
             track.audioUrl = data.track.audioUrl;
             if (!track.thumbnail && data.track.thumbnail) track.thumbnail = data.track.thumbnail;
+
+            // Seamlessly upgrade from preview to full 320kbps stream
+            if (this.currentTrack && (this.currentTrack.id === track.id || this.currentTrack.title === track.title)) {
+              const curTime = this.audio ? (this.audio.currentTime || 0) : 0;
+              this.activeEngine = 'audio';
+              if (this.audio) {
+                this.audio.src = track.audioUrl;
+                this.audio.currentTime = curTime;
+                if (this.isPlaying) this.play();
+              }
+            }
           }
         }
       } catch (_) {}
