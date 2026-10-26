@@ -301,6 +301,22 @@ const DbManager = {
     if (!client) return;
 
     try {
+      // If user repeated this song, remove previous row(s) to avoid duplicates
+      if (track.id) {
+        await client
+          .from('listening_history')
+          .delete()
+          .eq('user_id', userId)
+          .eq('song_id', track.id);
+      }
+      if (track.title) {
+        await client
+          .from('listening_history')
+          .delete()
+          .eq('user_id', userId)
+          .eq('title', track.title);
+      }
+
       await client.from('listening_history').insert(payload);
     } catch (err) {
       console.warn('[DbManager] addListeningHistory error:', err);
@@ -317,23 +333,44 @@ const DbManager = {
       .select('*')
       .eq('user_id', userId)
       .order('played_at', { ascending: false })
-      .limit(limit);
+      .limit(limit * 3);
 
     if (error) {
       console.warn('[DbManager] getListeningHistory fallback:', error.message);
       return StorageManager.getRecentTracks();
     }
 
-    return (data || []).map(row => ({
-      id: row.song_id,
-      title: row.title,
-      artist: row.artist,
-      channelTitle: row.artist,
-      thumbnail: row.artwork_url,
-      genre: row.genre,
-      playedAt: row.played_at,
-      durationPlayed: row.duration_played
-    }));
+    const uniqueTracks = [];
+    const seenSongKeys = new Set();
+
+    for (const row of (data || [])) {
+      if (!row || !row.title) continue;
+      const idKey = (row.song_id || '').trim();
+      const normTitle = (row.title || '').trim().toLowerCase();
+      const normArtist = (row.artist || '').trim().toLowerCase();
+      const compKey = `${normTitle}:::${normArtist}`;
+
+      if (idKey && seenSongKeys.has(`id:${idKey}`)) continue;
+      if (normTitle && seenSongKeys.has(`title:${compKey}`)) continue;
+
+      if (idKey) seenSongKeys.add(`id:${idKey}`);
+      if (normTitle) seenSongKeys.add(`title:${compKey}`);
+
+      uniqueTracks.push({
+        id: row.song_id,
+        title: row.title,
+        artist: row.artist,
+        channelTitle: row.artist,
+        thumbnail: row.artwork_url,
+        genre: row.genre,
+        playedAt: row.played_at,
+        durationPlayed: row.duration_played
+      });
+
+      if (uniqueTracks.length >= limit) break;
+    }
+
+    return uniqueTracks;
   },
 
   async clearListeningHistory(userId) {

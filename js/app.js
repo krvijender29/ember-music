@@ -617,10 +617,30 @@ async function initApp() {
     if (state.currentTab !== 'home') return;
 
     const localRecent = StorageManager.getRecentTracks();
-    const combinedHistory = [...recentHistory];
-    localRecent.forEach(lt => {
-      if (!combinedHistory.some(h => h.id === lt.id)) combinedHistory.push(lt);
-    });
+    const rawHistory = [...recentHistory, ...localRecent];
+    const combinedHistory = [];
+    const seenSongKeys = new Set();
+
+    for (const track of rawHistory) {
+      if (!track || !track.title) continue;
+      const idKey = (track.id || '').trim();
+      const normTitle = (track.title || '').trim().toLowerCase();
+      const normArtist = cleanArtistName(track.artist || track.channelTitle || '', track.title).trim().toLowerCase();
+      const compKey = `${normTitle}:::${normArtist}`;
+
+      if (idKey && seenSongKeys.has(`id:${idKey}`)) continue;
+      if (normTitle && seenSongKeys.has(`title:${compKey}`)) continue;
+      if (normTitle && !normArtist && seenSongKeys.has(`t:${normTitle}`)) continue;
+
+      if (idKey) seenSongKeys.add(`id:${idKey}`);
+      if (normTitle) {
+        seenSongKeys.add(`title:${compKey}`);
+        seenSongKeys.add(`t:${normTitle}`);
+      }
+
+      combinedHistory.push(track);
+    }
+
     const hasHistory = combinedHistory.length > 0;
     const displayHistoryCards = hasHistory ? combinedHistory.slice(0, 10) : DEFAULT_TRACKS.slice(0, 8);
 

@@ -123,7 +123,24 @@ const StorageManager = {
   getRecentTracks() {
     try {
       const data = localStorage.getItem(this.KEYS.RECENT_TRACKS);
-      return data ? JSON.parse(data) : [];
+      const list = data ? JSON.parse(data) : [];
+      if (!Array.isArray(list)) return [];
+      // Sanitize and deduplicate on read
+      const unique = [];
+      const seen = new Set();
+      for (const t of list) {
+        if (!t || !t.title) continue;
+        const idKey = (t.id || '').trim();
+        const titleKey = (t.title || '').trim().toLowerCase();
+        const artistKey = (t.artist || t.channelTitle || '').trim().toLowerCase();
+        const compKey = `${titleKey}:::${artistKey}`;
+        if (idKey && seen.has(`id:${idKey}`)) continue;
+        if (titleKey && seen.has(`title:${compKey}`)) continue;
+        if (idKey) seen.add(`id:${idKey}`);
+        if (titleKey) seen.add(`title:${compKey}`);
+        unique.push(t);
+      }
+      return unique;
     } catch (e) {
       return [];
     }
@@ -142,8 +159,27 @@ const StorageManager = {
   },
 
   addRecentTrack(track) {
+    if (!track || !track.title) return;
     let list = this.getRecentTracks();
-    list = list.filter(t => t.id !== track.id);
+    const targetId = (track.id || '').trim();
+    const targetTitle = (track.title || '').trim().toLowerCase();
+    const targetArtist = (track.artist || track.channelTitle || '').trim().toLowerCase();
+    const targetComp = `${targetTitle}:::${targetArtist}`;
+
+    // Remove any previous occurrence of this song (by id or title/artist match)
+    list = list.filter(t => {
+      if (!t || !t.title) return false;
+      const tId = (t.id || '').trim();
+      const tTitle = (t.title || '').trim().toLowerCase();
+      const tArtist = (t.artist || t.channelTitle || '').trim().toLowerCase();
+      const tComp = `${tTitle}:::${tArtist}`;
+
+      if (targetId && tId && tId === targetId) return false;
+      if (targetTitle && tTitle && (tComp === targetComp || tTitle === targetTitle)) return false;
+      return true;
+    });
+
+    // Add repeated or new track at the beginning
     list.unshift(track);
     if (list.length > 30) list.pop();
     localStorage.setItem(this.KEYS.RECENT_TRACKS, JSON.stringify(list));
