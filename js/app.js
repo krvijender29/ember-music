@@ -727,9 +727,10 @@ async function initApp() {
   let activeTransitionToken = 0;
 
   async function triggerViewTransition(statusMessage, actionCallback) {
+    const action = typeof statusMessage === 'function' ? statusMessage : actionCallback;
     const token = ++activeTransitionToken;
     if (viewLoader) {
-      if (viewLoaderStatus && statusMessage) {
+      if (viewLoaderStatus && typeof statusMessage === 'string') {
         viewLoaderStatus.textContent = statusMessage;
       }
       viewLoader.style.display = 'flex';
@@ -744,8 +745,8 @@ async function initApp() {
     const startTime = performance.now();
 
     try {
-      if (typeof actionCallback === 'function') {
-        await actionCallback();
+      if (typeof action === 'function') {
+        await action();
       }
     } catch (err) {
       console.warn('[Ember] View transition error:', err);
