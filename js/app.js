@@ -805,7 +805,8 @@ async function initApp() {
 
     // Asynchronously fetch live artist recommendations if not yet cached
     if (topArtist && (!state.artistRecommendationsCache || !state.artistRecommendationsCache[topArtist])) {
-      YouTubeAPI.search(`${topArtist} songs`, 6, 'songs').then(results => {
+      YouTubeAPI.search(`${topArtist} songs`, 6, 'songs').then(res => {
+        const results = Array.isArray(res) ? res : (res && (res.results || res.songs)) || [];
         if (results && results.length > 0) {
           const valid = results.filter(t => t.id);
           if (!state.artistRecommendationsCache) state.artistRecommendationsCache = {};
