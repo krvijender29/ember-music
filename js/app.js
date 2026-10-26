@@ -636,7 +636,10 @@ async function initApp() {
       const initials = getInitials(name);
 
       if (el.sidebarUserName) el.sidebarUserName.textContent = name;
-      if (el.sidebarUserStatus) el.sidebarUserStatus.textContent = '⚡ VIP 320kbps';
+      if (el.sidebarUserStatus) {
+        el.sidebarUserStatus.textContent = '';
+        el.sidebarUserStatus.style.display = 'none';
+      }
       if (el.sidebarUserAvatar) {
         if (user.photoURL) {
           el.sidebarUserAvatar.innerHTML = `<img src="${escapeHtml(user.photoURL)}" style="width:100%; height:100%; border-radius:50%; object-fit:cover;" alt="Avatar">`;
@@ -652,8 +655,11 @@ async function initApp() {
         }
       }
     } else {
-      if (el.sidebarUserName) el.sidebarUserName.textContent = 'Guest Listener';
-      if (el.sidebarUserStatus) el.sidebarUserStatus.textContent = 'Tap to Sign In';
+      if (el.sidebarUserName) el.sidebarUserName.textContent = 'Sign In';
+      if (el.sidebarUserStatus) {
+        el.sidebarUserStatus.textContent = '';
+        el.sidebarUserStatus.style.display = 'none';
+      }
       if (el.sidebarUserAvatar) el.sidebarUserAvatar.textContent = 'G';
       if (el.headerAvatarInner) {
         el.headerAvatarInner.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`;

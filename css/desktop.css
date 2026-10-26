@@ -386,10 +386,11 @@
     flex-direction: column;
     min-width: 0;
     flex: 1;
+    justify-content: center;
   }
 
   .sidebar-user-name {
-    font-size: 0.78rem;
+    font-size: 0.86rem;
     font-weight: 700;
     color: var(--text-white);
     white-space: nowrap;
@@ -398,10 +399,7 @@
   }
 
   .sidebar-user-status {
-    font-family: var(--font-mono);
-    font-size: 0.62rem;
-    color: #22c55e;
-    font-weight: 600;
+    display: none !important;
   }
 
   /* --------------------------------------------------------------------------
