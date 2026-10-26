@@ -726,16 +726,17 @@
     width: 100% !important;
     max-width: 100% !important;
     margin: 0 !important;
-    background: rgba(16, 16, 16, 0.82) !important;
-    backdrop-filter: blur(32px) !important;
-    -webkit-backdrop-filter: blur(32px) !important;
-    border-top: 1px solid var(--border-glass) !important;
+    background: rgba(12, 12, 12, 0.52) !important;
+    backdrop-filter: blur(54px) saturate(2) brightness(1.1) !important;
+    -webkit-backdrop-filter: blur(54px) saturate(2) brightness(1.1) !important;
+    border-top: 1px solid rgba(255, 255, 255, 0.12) !important;
     display: grid !important;
     grid-template-columns: 280px 1fr 280px !important;
     align-items: center !important;
     padding: 0 28px !important;
     z-index: 50 !important;
     cursor: default !important;
+    box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
   }
 
   /* Hide the top hairline progress bar on desktop (desktop has full scrubber) */
