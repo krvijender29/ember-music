@@ -2662,13 +2662,30 @@ async function initApp() {
     }
   });
 
-  // Open & Collapse Sheet
-  el.miniTrackClickArea.addEventListener('click', () => {
+  // Open & Collapse Sheet Helpers
+  function openNowPlayingSheet() {
     el.sheet.classList.add('active');
+    document.body.classList.add('now-playing-open');
+  }
+
+  function closeNowPlayingSheet() {
+    el.sheet.classList.remove('active');
+    document.body.classList.remove('now-playing-open');
+  }
+
+  el.miniTrackClickArea.addEventListener('click', () => {
+    openNowPlayingSheet();
   });
 
   el.btnSheetCollapse.addEventListener('click', () => {
-    el.sheet.classList.remove('active');
+    closeNowPlayingSheet();
+  });
+
+  // Escape key closes expanded player
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && el.sheet && el.sheet.classList.contains('active')) {
+      closeNowPlayingSheet();
+    }
   });
 
   // Sheet Controls
@@ -2942,7 +2959,7 @@ async function initApp() {
   if (el.desktopExpandBtn) {
     el.desktopExpandBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      el.sheet.classList.add('active');
+      openNowPlayingSheet();
     });
   }
 
