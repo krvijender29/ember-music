@@ -1,101 +1,19 @@
 /**
  * EMBER - MUSIC FOR EVERY MOOD
- * Curated Catalog, Playlists & Initial Tracks
+ * Verified Popular Catalog & Real Hits
  */
 
 const DEFAULT_TRACKS = [
   {
-    id: "DWcJFNfaw9c",
-    title: "Midnight",
-    artist: "Ember",
-    channelTitle: "Ember Soundscape",
-    duration: "03:56",
-    durationSec: 236,
-    thumbnail: "assets/images/ember_midnight.jpg",
-    audioUrl: "https://aac.saavncdn.com/356/274a784b31109d48d9a4a430c307d8e7_320.mp4",
-    category: "ember",
-    badge: "Ember Exclusive"
-  },
-  {
-    id: "fHI8X483mZ4",
-    title: "After Hours",
-    artist: "The Weeknd",
-    channelTitle: "The Weeknd",
-    duration: "06:01",
-    durationSec: 361,
-    thumbnail: "https://i.ytimg.com/vi/fHI8X483mZ4/hqdefault.jpg",
-    audioUrl: "https://aac.saavncdn.com/077/6d9172a98f9f9310e613e633a7ce99ae_320.mp4",
-    category: "rnb",
-    badge: "Trending"
-  },
-  {
-    id: "4NRXx6U8ABQ",
-    title: "Blinding Lights",
-    artist: "The Weeknd",
-    channelTitle: "The Weeknd",
-    duration: "03:20",
-    durationSec: 200,
-    thumbnail: "https://i.ytimg.com/vi/4NRXx6U8ABQ/hqdefault.jpg",
-    audioUrl: "https://aac.saavncdn.com/077/0b02a92687d1ae3369b6859f44872e52_320.mp4",
-    category: "pop",
-    badge: "Chart Buster"
-  },
-  {
-    id: "u57d4_b_YgI",
-    title: "Better Together",
-    artist: "SZA",
-    channelTitle: "Top Dawg Entertainment",
-    duration: "03:42",
-    durationSec: 222,
-    thumbnail: "assets/images/ember_rose.jpg",
-    audioUrl: "https://aac.saavncdn.com/209/46078fcc89b9fc5b0dd5131446586fb0_320.mp4",
-    category: "rnb",
-    badge: "Soul"
-  },
-  {
-    id: "1fuDDqU6n4o",
-    title: "Space",
-    artist: "Ember",
-    channelTitle: "M83",
-    duration: "04:04",
-    durationSec: 244,
-    thumbnail: "assets/images/ember_drive.jpg",
-    audioUrl: "https://aac.saavncdn.com/209/46078fcc89b9fc5b0dd5131446586fb0_320.mp4",
-    category: "ember",
-    badge: "Atmosphere"
-  },
-  {
-    id: "RBumgq5yVrA",
-    title: "Let Her Go",
-    artist: "Passenger",
-    channelTitle: "Passenger",
-    duration: "04:14",
-    durationSec: 254,
-    thumbnail: "https://i.ytimg.com/vi/RBumgq5yVrA/hqdefault.jpg",
-    category: "acoustic",
-    badge: "Acoustic Hit"
-  },
-  {
-    id: "ApXoWvfEYVU",
-    title: "Sunflower",
-    artist: "Post Malone",
-    channelTitle: "Post Malone",
-    duration: "02:41",
-    durationSec: 161,
-    thumbnail: "https://i.ytimg.com/vi/ApXoWvfEYVU/hqdefault.jpg",
-    category: "pop",
-    badge: "Global Hit"
-  },
-  {
-    id: "jFGKJBPFdUA",
-    title: "Apna Time Aayega",
-    artist: "Ranveer Singh & DIVINE",
-    channelTitle: "Zee Music Company",
-    duration: "02:10",
-    durationSec: 130,
-    thumbnail: "https://i.ytimg.com/vi/jFGKJBPFdUA/hqdefault.jpg",
-    category: "hiphop",
-    badge: "Rap Anthem"
+    id: "IJq0yyWug1k",
+    title: "Tum Hi Ho",
+    artist: "Arijit Singh",
+    channelTitle: "T-Series",
+    duration: "04:22",
+    durationSec: 262,
+    thumbnail: "https://i.ytimg.com/vi/IJq0yyWug1k/hqdefault.jpg",
+    category: "indian",
+    badge: "Timeless"
   },
   {
     id: "BddP6PYo2gs",
@@ -109,48 +27,37 @@ const DEFAULT_TRACKS = [
     badge: "Love Anthem"
   },
   {
-    id: "IJq0yyWug1k",
-    title: "Tum Hi Ho",
-    artist: "Arijit Singh",
-    channelTitle: "T-Series",
-    duration: "04:22",
-    durationSec: 262,
-    thumbnail: "https://i.ytimg.com/vi/IJq0yyWug1k/hqdefault.jpg",
-    category: "indian",
-    badge: "Timeless"
-  },
-  {
-    id: "jfKfPfyJRdk",
-    title: "Lofi Hip Hop Radio - Beats to Relax/Study to",
-    artist: "Lofi Girl",
-    channelTitle: "Lofi Girl",
-    duration: "LIVE",
-    durationSec: 0,
-    thumbnail: "https://i.ytimg.com/vi/jfKfPfyJRdk/hqdefault.jpg",
-    category: "lofi",
-    badge: "Live 24/7"
-  },
-  {
-    id: "4xDzrJKXOOY",
-    title: "synthwave radio - chill synth / retro beats",
-    artist: "Lofi Girl",
-    channelTitle: "Lofi Girl",
-    duration: "LIVE",
-    durationSec: 0,
-    thumbnail: "https://i.ytimg.com/vi/4xDzrJKXOOY/hqdefault.jpg",
-    category: "synthwave",
-    badge: "Live Synth"
-  },
-  {
-    id: "e-ORhEE9VVg",
-    title: "Blank Space",
-    artist: "Taylor Swift",
-    channelTitle: "Taylor Swift",
-    duration: "04:33",
-    durationSec: 273,
-    thumbnail: "https://i.ytimg.com/vi/e-ORhEE9VVg/hqdefault.jpg",
+    id: "4NRXx6U8ABQ",
+    title: "Blinding Lights",
+    artist: "The Weeknd",
+    channelTitle: "The Weeknd",
+    duration: "03:20",
+    durationSec: 200,
+    thumbnail: "https://i.ytimg.com/vi/4NRXx6U8ABQ/hqdefault.jpg",
     category: "pop",
     badge: "Chart Buster"
+  },
+  {
+    id: "fHI8X483mZ4",
+    title: "After Hours",
+    artist: "The Weeknd",
+    channelTitle: "The Weeknd",
+    duration: "06:01",
+    durationSec: 361,
+    thumbnail: "https://i.ytimg.com/vi/fHI8X483mZ4/hqdefault.jpg",
+    category: "rnb",
+    badge: "Trending"
+  },
+  {
+    id: "ApXoWvfEYVU",
+    title: "Sunflower",
+    artist: "Post Malone",
+    channelTitle: "Post Malone",
+    duration: "02:41",
+    durationSec: 161,
+    thumbnail: "https://i.ytimg.com/vi/ApXoWvfEYVU/hqdefault.jpg",
+    category: "pop",
+    badge: "Global Hit"
   },
   {
     id: "JGwWNGJdvx8",
@@ -164,6 +71,39 @@ const DEFAULT_TRACKS = [
     badge: "Worldwide #1"
   },
   {
+    id: "e-ORhEE9VVg",
+    title: "Blank Space",
+    artist: "Taylor Swift",
+    channelTitle: "Taylor Swift",
+    duration: "04:33",
+    durationSec: 273,
+    thumbnail: "https://i.ytimg.com/vi/e-ORhEE9VVg/hqdefault.jpg",
+    category: "pop",
+    badge: "Chart Buster"
+  },
+  {
+    id: "RBumgq5yVrA",
+    title: "Let Her Go",
+    artist: "Passenger",
+    channelTitle: "Passenger",
+    duration: "04:14",
+    durationSec: 254,
+    thumbnail: "https://i.ytimg.com/vi/RBumgq5yVrA/hqdefault.jpg",
+    category: "acoustic",
+    badge: "Acoustic Hit"
+  },
+  {
+    id: "jFGKJBPFdUA",
+    title: "Apna Time Aayega",
+    artist: "Ranveer Singh & DIVINE",
+    channelTitle: "Zee Music Company",
+    duration: "02:10",
+    durationSec: 130,
+    thumbnail: "https://i.ytimg.com/vi/jFGKJBPFdUA/hqdefault.jpg",
+    category: "hiphop",
+    badge: "Rap Anthem"
+  },
+  {
     id: "vbvyNnw8Qjg",
     title: "Bohemian Rhapsody",
     artist: "Queen",
@@ -173,74 +113,40 @@ const DEFAULT_TRACKS = [
     thumbnail: "https://i.ytimg.com/vi/vbvyNnw8Qjg/hqdefault.jpg",
     category: "rock",
     badge: "Legendary"
+  },
+  {
+    id: "u57d4_b_YgI",
+    title: "Better Together",
+    artist: "SZA",
+    channelTitle: "Top Dawg Entertainment",
+    duration: "03:42",
+    durationSec: 222,
+    thumbnail: "https://i.ytimg.com/vi/u57d4_b_YgI/hqdefault.jpg",
+    category: "rnb",
+    badge: "Soul"
   }
 ];
 
-const CURATED_PLAYLISTS = [
-  {
-    id: "late-nights",
-    title: "Late Nights",
-    subtitle: "Playlist • Ember",
-    description: "Chill vibes for the night... 🌙",
-    stats: "50 songs • 2h 45m",
-    cover: "assets/images/ember_midnight.jpg",
-    trackIds: ["DWcJFNfaw9c", "fHI8X483mZ4", "u57d4_b_YgI", "1fuDDqU6n4o", "4NRXx6U8ABQ"]
-  },
-  {
-    id: "heartbreaks-heels",
-    title: "Heartbreaks & Heels",
-    subtitle: "Playlist • Ember",
-    description: "Passionate rhythms, burning roses & moody ember melodies",
-    stats: "38 songs • 2h 10m",
-    cover: "assets/images/ember_rose.jpg",
-    trackIds: ["u57d4_b_YgI", "RBumgq5yVrA", "IJq0yyWug1k", "e-ORhEE9VVg"]
-  },
-  {
-    id: "drive",
-    title: "Drive",
-    subtitle: "Playlist • Ember",
-    description: "Cruising down late night highways into glowing horizons",
-    stats: "44 songs • 2h 30m",
-    cover: "assets/images/ember_drive.jpg",
-    trackIds: ["DWcJFNfaw9c", "4NRXx6U8ABQ", "1fuDDqU6n4o", "4xDzrJKXOOY"]
-  },
-  {
-    id: "chill-vibes",
-    title: "Chill Vibes",
-    subtitle: "Playlist • Ember",
-    description: "Sunset acoustics and gentle lo-fi melodies to unwind",
-    stats: "62 songs • 3h 15m",
-    cover: "assets/images/ember_banner.jpg",
-    trackIds: ["jfKfPfyJRdk", "RBumgq5yVrA", "ApXoWvfEYVU", "JGwWNGJdvx8"]
-  },
-  {
-    id: "focus-mode",
-    title: "Focus Mode",
-    subtitle: "Playlist • Ember",
-    description: "Ambient frequencies for deep coding, reading and flow",
-    stats: "30 songs • 1h 50m",
-    cover: "https://i.ytimg.com/vi/36YnV9STBqc/hqdefault.jpg",
-    trackIds: ["4xDzrJKXOOY", "DWcJFNfaw9c", "jfKfPfyJRdk"]
-  }
-];
+// All default demo playlists removed
+const CURATED_PLAYLISTS = [];
 
 const TRENDING_SEARCHES = [
   "Arijit Singh",
   "The Weeknd",
-  "Lofi Beats",
-  "Atif Aslam",
-  "Taylor Swift"
+  "Diljit Dosanjh",
+  "Taylor Swift",
+  "Post Malone"
 ];
 
 const GENRE_CARDS = [
+  { title: "Bollywood", query: "Bollywood Hits", color: "linear-gradient(135deg, #ba68c8, #6a1b9a)", art: "https://i.ytimg.com/vi/IJq0yyWug1k/hqdefault.jpg" },
+  { title: "Punjabi", query: "Punjabi Hits", color: "linear-gradient(135deg, #ffa726, #f57c00)", art: "https://i.ytimg.com/vi/jFGKJBPFdUA/hqdefault.jpg" },
   { title: "Pop", query: "Pop hits", color: "linear-gradient(135deg, #ec407a, #c2185b)", art: "assets/images/ember_rose.jpg" },
   { title: "Hip Hop", query: "Hip Hop", color: "linear-gradient(135deg, #ff7043, #e64a19)", art: "https://i.ytimg.com/vi/fHI8X483mZ4/hqdefault.jpg" },
   { title: "Lo-Fi", query: "Lofi Beats", color: "linear-gradient(135deg, #5c6bc0, #303f9f)", art: "assets/images/ember_banner.jpg" },
-  { title: "R&B", query: "R&B hits", color: "linear-gradient(135deg, #ab47bc, #7b1fa2)", art: "assets/images/ember_midnight.jpg" },
-  { title: "Electronic", query: "Electronic EDM", color: "linear-gradient(135deg, #26c6da, #0097a7)", art: "assets/images/ember_drive.jpg" },
+  { title: "R&B", query: "R&B hits", color: "linear-gradient(135deg, #ab47bc, #7b1fa2)", art: "https://i.ytimg.com/vi/fHI8X483mZ4/hqdefault.jpg" },
+  { title: "Electronic", query: "Electronic EDM", color: "linear-gradient(135deg, #26c6da, #0097a7)", art: "assets/images/ember_banner.jpg" },
   { title: "Rock", query: "Classic Rock", color: "linear-gradient(135deg, #ef5350, #d32f2f)", art: "https://i.ytimg.com/vi/vbvyNnw8Qjg/hqdefault.jpg" },
   { title: "Indie", query: "Indie Alternative", color: "linear-gradient(135deg, #66bb6a, #388e3c)", art: "https://i.ytimg.com/vi/RBumgq5yVrA/hqdefault.jpg" },
-  { title: "Punjabi", query: "Punjabi Hits", color: "linear-gradient(135deg, #ffa726, #f57c00)", art: "https://i.ytimg.com/vi/jFGKJBPFdUA/hqdefault.jpg" },
-  { title: "Ambient", query: "Ambient Chill", color: "linear-gradient(135deg, #78909c, #455a64)", art: "https://i.ytimg.com/vi/36YnV9STBqc/hqdefault.jpg" },
-  { title: "Bollywood", query: "Bollywood Hits", color: "linear-gradient(135deg, #ba68c8, #6a1b9a)", art: "https://i.ytimg.com/vi/ApXoWvfEYVU/hqdefault.jpg" }
+  { title: "Ambient", query: "Ambient Chill", color: "linear-gradient(135deg, #78909c, #455a64)", art: "https://i.ytimg.com/vi/36YnV9STBqc/hqdefault.jpg" }
 ];

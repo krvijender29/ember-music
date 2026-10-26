@@ -268,7 +268,7 @@ const DbManager = {
         song_id: track.id,
         title: track.title,
         artist: track.artist || track.channelTitle || 'Ember',
-        artwork_url: track.thumbnail || 'assets/images/ember_midnight.jpg',
+        artwork_url: track.thumbnail || 'assets/images/ember_banner.jpg',
         liked_at: new Date().toISOString()
       };
       await client.from('liked_songs').upsert(payload, { onConflict: 'user_id, song_id' });
@@ -289,7 +289,7 @@ const DbManager = {
       song_id: track.id,
       title: track.title,
       artist: track.artist || track.channelTitle || 'Ember',
-      artwork_url: track.thumbnail || 'assets/images/ember_midnight.jpg',
+      artwork_url: track.thumbnail || 'assets/images/ember_banner.jpg',
       genre: track.genre || 'Electronic',
       duration_played: Math.round(durationPlayed),
       played_at: new Date().toISOString()
@@ -503,7 +503,7 @@ const DbManager = {
         song_id: track.id,
         title: track.title,
         artist: track.artist || track.channelTitle || 'Ember',
-        artwork_url: track.thumbnail || 'assets/images/ember_midnight.jpg',
+        artwork_url: track.thumbnail || 'assets/images/ember_banner.jpg',
         position: nextPos
       });
 

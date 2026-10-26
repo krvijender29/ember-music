@@ -241,11 +241,11 @@ async function initApp() {
     const isPlayingThis = player.currentTrack && player.currentTrack.id === track.id;
     const user = AuthManager.getCurrentUser();
     const isLiked = StorageManager.isSongLiked(track.id);
-    const isCustomPlaylistView = state.currentTab === 'playlist' && !CURATED_PLAYLISTS.some(p => p.id === state.activePlaylistId);
+    const isCustomPlaylistView = state.currentTab === 'playlist';
 
     return `
       <div class="ember-song-row ${isPlayingThis ? 'playing' : ''}" data-track-id="${escapeHtml(track.id)}">
-        <img class="song-row-thumb" src="${escapeHtml(track.thumbnail || 'assets/images/ember_midnight.jpg')}" alt="${escapeHtml(track.title)}" loading="lazy">
+        <img class="song-row-thumb" src="${escapeHtml(track.thumbnail || 'assets/images/ember_banner.jpg')}" alt="${escapeHtml(track.title)}" loading="lazy">
         <div class="song-row-meta">
           <div class="song-row-title">${escapeHtml(track.title)}</div>
           <div class="song-row-artist">${escapeHtml(track.artist || track.channelTitle || 'Ember Artist')}</div>
@@ -465,7 +465,7 @@ async function initApp() {
       html += `
         <div style="font-size:0.72rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; margin-bottom:4px; letter-spacing:0.04em;">Now Playing</div>
         <div class="ember-song-row playing" style="background:rgba(255,255,255,0.06); border-radius:10px; margin-bottom:12px;" data-queue-index="${currentIndex}">
-          <img class="song-row-thumb" src="${escapeHtml(currentTrack.thumbnail || 'assets/images/ember_midnight.jpg')}" alt="${escapeHtml(currentTrack.title)}">
+          <img class="song-row-thumb" src="${escapeHtml(currentTrack.thumbnail || 'assets/images/ember_banner.jpg')}" alt="${escapeHtml(currentTrack.title)}">
           <div class="song-row-meta">
             <div class="song-row-title" style="color:#ff6b4a;">${escapeHtml(currentTrack.title)}</div>
             <div class="song-row-artist">${escapeHtml(currentTrack.artist || 'Ember Artist')}</div>
@@ -484,7 +484,7 @@ async function initApp() {
       html += nextTracks.map((item, i) => `
         <div class="ember-song-row queue-item-row" data-queue-index="${item.originalIndex}" style="cursor:pointer; border-radius:8px;">
           <span style="font-size:0.74rem; color:var(--text-dim); width:18px; text-align:center; flex-shrink:0;">${i + 1}</span>
-          <img class="song-row-thumb" src="${escapeHtml(item.track.thumbnail || 'assets/images/ember_midnight.jpg')}" alt="${escapeHtml(item.track.title)}">
+          <img class="song-row-thumb" src="${escapeHtml(item.track.thumbnail || 'assets/images/ember_banner.jpg')}" alt="${escapeHtml(item.track.title)}">
           <div class="song-row-meta">
             <div class="song-row-title">${escapeHtml(item.track.title)}</div>
             <div class="song-row-artist">${escapeHtml(item.track.artist || 'Ember Artist')}</div>
@@ -568,28 +568,28 @@ async function initApp() {
     }
   }
 
-  // Render Playlists in Desktop Left Sidebar (Curated + User Saved)
+  // Render Playlists in Desktop Left Sidebar (User Saved)
   function renderSidebarPlaylists() {
     if (!el.sidebarPlaylistsContainer) return;
 
-    const curatedHtml = CURATED_PLAYLISTS.map(pl => `
-      <div class="sidebar-playlist-link" data-playlist-id="${escapeHtml(pl.id)}">${escapeHtml(pl.title)}</div>
-    `).join('');
-
     const customPlaylists = StorageManager.getPlaylists();
-    let customHtml = '';
+    let html = '';
     if (customPlaylists.length > 0) {
-      customHtml = `
-        <div style="font-size:0.68rem; font-weight:700; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.8px; margin:14px 0 6px 0; padding:0 4px;">Your Playlists</div>
-        ${customPlaylists.map(pl => `
-          <div class="sidebar-playlist-link custom-pl-link" data-playlist-id="${escapeHtml(pl.id)}">
-            <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(pl.name)}</span>
-          </div>
-        `).join('')}
+      html = customPlaylists.map(pl => `
+        <div class="sidebar-playlist-link custom-pl-link" data-playlist-id="${escapeHtml(pl.id)}">
+          <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(pl.name)}</span>
+        </div>
+      `).join('');
+    } else {
+      html = `
+        <div style="font-size:0.75rem; color:var(--text-dim); padding:10px 4px; line-height:1.4;">
+          No playlists yet.<br>
+          <span style="font-size:0.7rem; color:var(--text-muted);">Click + Create Playlist above to add your own!</span>
+        </div>
       `;
     }
 
-    el.sidebarPlaylistsContainer.innerHTML = curatedHtml + customHtml;
+    el.sidebarPlaylistsContainer.innerHTML = html;
 
     el.sidebarPlaylistsContainer.querySelectorAll('.sidebar-playlist-link').forEach(link => {
       link.addEventListener('click', () => {
@@ -701,7 +701,7 @@ async function initApp() {
         ${displayHistoryCards.map((track, i) => `
           <div class="ember-music-card history-song-card" data-track-id="${escapeHtml(track.id)}" data-index="${i}" title="${escapeHtml(track.title)}">
             <div class="card-img-wrapper">
-              <img src="${escapeHtml(track.thumbnail || 'assets/images/ember_midnight.jpg')}" alt="${escapeHtml(track.title)}" loading="lazy">
+              <img src="${escapeHtml(track.thumbnail || 'assets/images/ember_banner.jpg')}" alt="${escapeHtml(track.title)}" loading="lazy">
               <button class="card-play-hover-btn" data-play-track-id="${escapeHtml(track.id)}" title="Play ${escapeHtml(track.title)}">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 18 12 6 20 6 4"/></svg>
               </button>
@@ -756,25 +756,31 @@ async function initApp() {
         </button>
       </div>
 
-      <!-- Curated Soundscapes & Mood Playlists (Accessible below history & artist) -->
-      <div class="section-title-row" style="margin-top:24px;">
-        <h3>Featured Soundscapes &amp; Playlists</h3>
-        <span class="section-see-all" id="see-all-playlists-bottom" style="cursor:pointer;">See All &gt;</span>
-      </div>
-      <div class="horizontal-card-scroll" id="home-playlists-scroll">
-        ${CURATED_PLAYLISTS.map(pl => `
-          <div class="ember-music-card" data-playlist-id="${escapeHtml(pl.id)}">
-            <div class="card-img-wrapper">
-              <img src="${escapeHtml(pl.cover)}" alt="${escapeHtml(pl.title)}" loading="lazy">
-              <button class="card-play-hover-btn" data-play-playlist="${escapeHtml(pl.id)}" title="Play ${escapeHtml(pl.title)}">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 18 12 6 20 6 4"/></svg>
-              </button>
-            </div>
-            <div class="card-title">${escapeHtml(pl.title)}</div>
-            <div class="card-subtitle">${escapeHtml(pl.subtitle)}</div>
+      <!-- User Saved Playlists (If any exist) -->
+      ${(() => {
+        const customPlaylists = StorageManager.getPlaylists();
+        if (!customPlaylists || customPlaylists.length === 0) return '';
+        return `
+          <div class="section-title-row" style="margin-top:24px;">
+            <h3>Your Playlists</h3>
+            <span class="section-see-all" id="see-all-playlists-bottom" style="cursor:pointer;">See All &gt;</span>
           </div>
-        `).join('')}
-      </div>
+          <div class="horizontal-card-scroll" id="home-playlists-scroll">
+            ${customPlaylists.map(pl => `
+              <div class="ember-music-card" data-playlist-id="${escapeHtml(pl.id)}">
+                <div class="card-img-wrapper">
+                  <img src="${escapeHtml(pl.cover || (pl.tracks && pl.tracks[0]?.thumbnail) || 'assets/images/ember_banner.jpg')}" alt="${escapeHtml(pl.name)}" loading="lazy">
+                  <button class="card-play-hover-btn" data-play-playlist="${escapeHtml(pl.id)}" title="Play ${escapeHtml(pl.name)}">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 18 12 6 20 6 4"/></svg>
+                  </button>
+                </div>
+                <div class="card-title">${escapeHtml(pl.name)}</div>
+                <div class="card-subtitle">${(pl.tracks || []).length} songs • By You</div>
+              </div>
+            `).join('')}
+          </div>
+        `;
+      })()}
     `;
 
     // Asynchronously fetch live artist recommendations if not yet cached
@@ -820,8 +826,11 @@ async function initApp() {
         if (hasHistory) {
           player.setQueue(displayHistoryCards, 0, true);
           showToast(`Resuming "${displayHistoryCards[0].title}"`, 'success');
+        } else if (displayHistoryCards.length > 0) {
+          player.setQueue(displayHistoryCards, 0, true);
+          showToast(`Playing "${displayHistoryCards[0].title}"`, 'success');
         } else {
-          openPlaylistView('late-nights', true);
+          showToast('Search songs or artists to start listening!', 'info');
         }
       });
     }
@@ -1250,40 +1259,36 @@ async function initApp() {
     state.currentTab = 'playlist';
     state.activePlaylistId = playlistId;
 
-    let playlist = CURATED_PLAYLISTS.find(p => p.id === playlistId);
+    let playlist = null;
     let playlistTracks = [];
-    let isCustom = false;
+    let isCustom = true;
 
-    if (playlist) {
-      playlistTracks = playlist.tracks || DEFAULT_TRACKS;
-    } else {
-      let customPlaylists = StorageManager.getPlaylists();
-      let custom = customPlaylists.find(p => p.id === playlistId);
-      const user = AuthManager.getCurrentUser();
-      if (!custom && user?.uid) {
-        try {
-          customPlaylists = await DbManager.getPlaylists(user.uid);
-          custom = customPlaylists.find(p => p.id === playlistId);
-        } catch (_) {}
-      }
+    let customPlaylists = StorageManager.getPlaylists();
+    let custom = customPlaylists.find(p => p.id === playlistId);
+    const user = AuthManager.getCurrentUser();
+    if (!custom && user?.uid) {
+      try {
+        customPlaylists = await DbManager.getPlaylists(user.uid);
+        custom = customPlaylists.find(p => p.id === playlistId);
+      } catch (_) {}
+    }
 
-      if (custom) {
-        isCustom = true;
-        playlist = {
-          id: custom.id,
-          title: custom.name,
-          subtitle: 'Custom Playlist',
-          cover: 'assets/images/ember_rose.jpg',
-          description: custom.description || 'Your personalized collection on Ember.',
-          stats: `${(custom.tracks || []).length} songs`
-        };
-        playlistTracks = custom.tracks || [];
-      }
+    if (custom) {
+      playlist = {
+        id: custom.id,
+        title: custom.name,
+        subtitle: 'Custom Playlist',
+        cover: 'assets/images/ember_banner.jpg',
+        description: custom.description || 'Your personalized collection on Ember.',
+        stats: `${(custom.tracks || []).length} songs`
+      };
+      playlistTracks = custom.tracks || [];
     }
 
     if (!playlist) {
-      playlist = CURATED_PLAYLISTS[0];
-      playlistTracks = DEFAULT_TRACKS.slice(0, 5);
+      showToast('Playlist not found', 'warning');
+      switchTab('library');
+      return;
     }
 
     el.viewport.innerHTML = `
@@ -1301,7 +1306,7 @@ async function initApp() {
       <!-- Playlist Hero -->
       <div class="playlist-hero-header">
         <div class="playlist-cover-big">
-          <img src="${escapeHtml(playlist.cover || 'assets/images/ember_midnight.jpg')}" alt="${escapeHtml(playlist.title)}">
+          <img src="${escapeHtml(playlist.cover || 'assets/images/ember_banner.jpg')}" alt="${escapeHtml(playlist.title)}">
         </div>
         <h2 class="playlist-info-title">${escapeHtml(playlist.title)}</h2>
         <div class="playlist-info-creator">${escapeHtml(playlist.subtitle || 'Playlist • Ember')}</div>
@@ -1616,17 +1621,20 @@ async function initApp() {
       if (openCreateBtn) openCreateBtn.style.display = 'none';
       if (likedRow) likedRow.style.display = 'none';
       if (customPlaylistsWrap) {
-        customPlaylistsWrap.innerHTML = CURATED_PLAYLISTS.map(pl => `
-          <div class="ember-song-row" data-playlist-id="${escapeHtml(pl.id)}" style="margin-bottom:8px; cursor:pointer;">
-            <img class="song-row-thumb" src="${escapeHtml(pl.cover)}" alt="${escapeHtml(pl.title)}" style="border-radius:8px;">
+        customPlaylistsWrap.innerHTML = GENRE_CARDS.map(g => `
+          <div class="ember-song-row" data-genre="${escapeHtml(g.name)}" style="margin-bottom:8px; cursor:pointer;">
+            <img class="song-row-thumb" src="${escapeHtml(g.image || 'assets/images/ember_banner.jpg')}" alt="${escapeHtml(g.name)}" style="border-radius:8px;">
             <div class="song-row-meta">
-              <div class="song-row-title">${escapeHtml(pl.title)}</div>
-              <div class="song-row-artist">${escapeHtml(pl.subtitle)}</div>
+              <div class="song-row-title">${escapeHtml(g.name)}</div>
+              <div class="song-row-artist">Genre Collection</div>
             </div>
           </div>
         `).join('');
         customPlaylistsWrap.querySelectorAll('.ember-song-row').forEach(row => {
-          row.addEventListener('click', () => openPlaylistView(row.dataset.playlistId));
+          row.addEventListener('click', () => {
+            state.searchQuery = row.dataset.genre;
+            switchTab('search', false);
+          });
         });
       }
     });
@@ -1874,12 +1882,12 @@ async function initApp() {
     // Mini Player
     el.miniTitle.textContent = track.title;
     el.miniArtist.textContent = track.artist || track.channelTitle || 'Ember';
-    el.miniThumb.src = track.thumbnail || 'assets/images/ember_midnight.jpg';
+    el.miniThumb.src = track.thumbnail || 'assets/images/ember_banner.jpg';
 
     // Fullscreen Sheet
     el.sheetTitle.textContent = track.title;
     el.sheetArtist.textContent = track.artist || track.channelTitle || 'Ember';
-    el.sheetArtwork.src = track.thumbnail || 'assets/images/ember_midnight.jpg';
+    el.sheetArtwork.src = track.thumbnail || 'assets/images/ember_banner.jpg';
 
     // Sync Like Status
     const isLiked = StorageManager.isSongLiked(track.id);
@@ -2907,10 +2915,12 @@ async function initApp() {
 
       // Staging queue if empty
       if (player.queue.length === 0) {
-        player.setQueue(DEFAULT_TRACKS, 0, false);
-        if (DEFAULT_TRACKS.length > 0) {
-          player.currentTrack = DEFAULT_TRACKS[0];
-          player.onTrackChange(DEFAULT_TRACKS[0]);
+        const recentTracks = StorageManager.getRecentTracks();
+        const initialTracks = (recentTracks && recentTracks.length > 0) ? recentTracks : DEFAULT_TRACKS;
+        player.setQueue(initialTracks, 0, false);
+        if (initialTracks.length > 0) {
+          player.currentTrack = initialTracks[0];
+          player.onTrackChange(initialTracks[0]);
         }
       }
 
@@ -2957,9 +2967,11 @@ async function initApp() {
   if (AuthManager.isGuest()) {
     openAuthModal('🔒 Welcome to EMBER. Please sign in to stream music.', true);
   } else {
-    player.setQueue(DEFAULT_TRACKS, 0, false);
-    if (DEFAULT_TRACKS.length > 0) {
-      const first = DEFAULT_TRACKS[0];
+    const recentTracks = StorageManager.getRecentTracks();
+    const initialTracks = (recentTracks && recentTracks.length > 0) ? recentTracks : DEFAULT_TRACKS;
+    player.setQueue(initialTracks, 0, false);
+    if (initialTracks.length > 0) {
+      const first = initialTracks[0];
       player.currentTrack = first;
       player.onTrackChange(first);
     }

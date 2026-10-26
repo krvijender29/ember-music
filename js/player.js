@@ -462,7 +462,7 @@ class MusicPlayer {
         artist: track.artist || 'Artist',
         album: track.album || 'Ember Music',
         artwork: [
-          { src: track.thumbnail || 'assets/images/ember_midnight.jpg', sizes: '512x512', type: 'image/jpeg' }
+          { src: track.thumbnail || 'assets/images/ember_banner.jpg', sizes: '512x512', type: 'image/jpeg' }
         ]
       });
 
