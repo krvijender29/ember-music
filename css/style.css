@@ -67,6 +67,189 @@
   --mobile-width: 420px;
 }
 
+/* ==========================================================================
+   Starting Preloader / Splash Screen Animation
+   ========================================================================== */
+.ember-splash-screen {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  height: 100dvh !important;
+  background: #070709 !important;
+  z-index: 99999 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  overflow: hidden !important;
+  pointer-events: auto !important;
+  transition: opacity 0.5s cubic-bezier(0.16, 1, 0.3, 1),
+              transform 0.5s cubic-bezier(0.16, 1, 0.3, 1),
+              filter 0.5s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+.ember-splash-screen.fade-out {
+  opacity: 0 !important;
+  transform: scale(1.04) !important;
+  filter: blur(14px) !important;
+  pointer-events: none !important;
+}
+
+.splash-ambient-glow {
+  position: absolute;
+  width: 440px;
+  height: 440px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 90, 54, 0.22) 0%, rgba(255, 90, 54, 0.05) 50%, transparent 70%);
+  filter: blur(44px);
+  pointer-events: none;
+  animation: splashGlowPulse 2.6s ease-in-out infinite;
+}
+
+.splash-content {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  animation: splashContentEnter 0.65s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.splash-brand-logo {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  user-select: none;
+}
+
+.splash-title {
+  font-family: var(--font-display, -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif);
+  font-size: 3.4rem;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  color: #FFFFFF;
+  line-height: 1;
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  animation: splashLettersShimmer 2.8s ease-in-out infinite;
+}
+
+.splash-title span {
+  color: #FF5A36;
+  text-shadow: 0 0 28px rgba(255, 90, 54, 0.55);
+}
+
+.splash-subtitle {
+  font-family: var(--font-mono, "SF Mono", Consolas, monospace);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.24em;
+  color: #8E8E93;
+  text-transform: uppercase;
+  margin-top: 10px;
+  margin-bottom: 0;
+  padding-left: 0.24em;
+  opacity: 0.9;
+}
+
+/* Audio Wave Equalizer Bars */
+.splash-audio-bars {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  margin-top: 26px;
+  height: 22px;
+}
+
+.splash-audio-bars .bar {
+  width: 3.5px;
+  background: #FF5A36;
+  border-radius: 99px;
+  box-shadow: 0 0 10px rgba(255, 90, 54, 0.6);
+  animation: splashBarWave 1.1s ease-in-out infinite alternate;
+}
+
+.splash-audio-bars .bar-1 { height: 8px; animation-delay: 0.0s; }
+.splash-audio-bars .bar-2 { height: 18px; animation-delay: 0.18s; }
+.splash-audio-bars .bar-3 { height: 24px; animation-delay: 0.36s; }
+.splash-audio-bars .bar-4 { height: 14px; animation-delay: 0.22s; }
+.splash-audio-bars .bar-5 { height: 10px; animation-delay: 0.08s; }
+
+@keyframes splashContentEnter {
+  from {
+    opacity: 0;
+    transform: scale(0.92) translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes splashGlowPulse {
+  0%, 100% {
+    opacity: 0.35;
+    transform: scale(0.96);
+  }
+  50% {
+    opacity: 0.75;
+    transform: scale(1.18);
+  }
+}
+
+@keyframes splashLettersShimmer {
+  0%, 100% {
+    filter: drop-shadow(0 0 16px rgba(255, 90, 54, 0.25));
+  }
+  50% {
+    filter: drop-shadow(0 0 30px rgba(255, 90, 54, 0.65));
+  }
+}
+
+@keyframes splashBarWave {
+  0% {
+    height: 4px;
+    opacity: 0.35;
+    transform: scaleY(0.4);
+  }
+  100% {
+    height: 24px;
+    opacity: 1;
+    transform: scaleY(1);
+  }
+}
+
+@media (max-width: 600px) {
+  .splash-title {
+    font-size: 2.5rem;
+  }
+  .splash-subtitle {
+    font-size: 0.62rem;
+    letter-spacing: 0.20em;
+    padding-left: 0.20em;
+  }
+  .splash-ambient-glow {
+    width: 300px;
+    height: 300px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .splash-content,
+  .splash-ambient-glow,
+  .splash-title,
+  .splash-audio-bars .bar {
+    animation: none !important;
+  }
+  .ember-splash-screen.fade-out {
+    transition: opacity 0.2s ease !important;
+  }
+}
+
 *, *::before, *::after {
   box-sizing: border-box;
   margin: 0;

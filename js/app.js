@@ -3899,12 +3899,39 @@ async function initApp() {
 
   // Initial Sidebar Playlists & View
   renderSidebarPlaylists();
-  renderHomeView();
+  await renderHomeView();
+
+  // Dismiss splash screen animation once website is fully loaded
+  dismissSplashScreen();
 
   } catch (err) {
     console.error('[Ember INIT ERROR]', err.stack || err);
+    dismissSplashScreen();
   }
 }
+
+// Starting Splash Screen Preloader Controller
+const splashStartTime = Date.now();
+const MIN_SPLASH_TIME = 700; // minimum duration to appreciate animation smoothly
+
+function dismissSplashScreen() {
+  const splash = document.getElementById('ember-splash-screen');
+  if (!splash || splash.classList.contains('fade-out')) return;
+  const elapsed = Date.now() - splashStartTime;
+  const remaining = Math.max(0, MIN_SPLASH_TIME - elapsed);
+  setTimeout(() => {
+    splash.classList.add('fade-out');
+    setTimeout(() => {
+      splash.style.display = 'none';
+      if (splash.parentNode) splash.parentNode.removeChild(splash);
+    }, 520);
+  }, remaining);
+}
+
+// Global fallback timeout: ensures splash screen is always dismissed even on network timeout
+setTimeout(() => {
+  dismissSplashScreen();
+}, 4500);
 
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', initApp);
