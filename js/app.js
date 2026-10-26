@@ -96,6 +96,7 @@ async function initApp() {
     sidebarUserName: document.getElementById('sidebar-user-name'),
     sidebarUserStatus: document.getElementById('sidebar-user-status'),
     desktopNavBack: document.getElementById('desktop-nav-back'),
+    desktopTopSearchBox: document.getElementById('desktop-top-search-box'),
     desktopTopSearchInput: document.getElementById('desktop-top-search-input'),
 
     // Desktop Center Player
@@ -703,6 +704,8 @@ async function initApp() {
      ========================================================================== */
   async function renderHomeView() {
     state.currentTab = 'home';
+    if (typeof updateSidebarActiveUI === 'function') updateSidebarActiveUI('home');
+    if (typeof updateHeaderSearchUI === 'function') updateHeaderSearchUI('home');
     const user = AuthManager.getCurrentUser();
 
     // 1. Concurrently load user listening history, preferences, and recommendations
@@ -1086,6 +1089,7 @@ async function initApp() {
      ========================================================================== */
   function renderSearchView(autoFocus = false) {
     state.currentTab = 'search';
+    if (typeof updateHeaderSearchUI === 'function') updateHeaderSearchUI('search');
 
     const user = AuthManager.getCurrentUser();
     let recentSearches = StorageManager.getSearchHistory();
@@ -1865,6 +1869,10 @@ async function initApp() {
     state.currentTab = 'playlist';
     state.activePlaylistId = playlistId;
 
+    if (el.viewport) el.viewport.scrollTop = 0;
+    if (typeof updateSidebarActiveUI === 'function') updateSidebarActiveUI('playlist');
+    if (typeof updateHeaderSearchUI === 'function') updateHeaderSearchUI('playlist');
+
     let playlist = null;
     let playlistTracks = [];
     let isCustom = true;
@@ -2040,6 +2048,10 @@ async function initApp() {
     state.previousTab = state.currentTab;
     state.currentTab = 'liked-songs';
 
+    if (el.viewport) el.viewport.scrollTop = 0;
+    if (typeof updateSidebarActiveUI === 'function') updateSidebarActiveUI('liked-songs');
+    if (typeof updateHeaderSearchUI === 'function') updateHeaderSearchUI('liked-songs');
+
     const user = AuthManager.getCurrentUser();
     const likedTracks = await DbManager.getLikedSongs(user?.uid);
 
@@ -2102,6 +2114,8 @@ async function initApp() {
      ========================================================================== */
   async function renderLibraryView() {
     state.currentTab = 'library';
+    if (typeof updateSidebarActiveUI === 'function') updateSidebarActiveUI('library');
+    if (typeof updateHeaderSearchUI === 'function') updateHeaderSearchUI('library');
     const user = AuthManager.getCurrentUser();
     const liked = await DbManager.getLikedSongs(user?.uid);
     const customPlaylists = await DbManager.getPlaylists(user?.uid);
@@ -2280,6 +2294,8 @@ async function initApp() {
      ========================================================================== */
   async function renderProfileView() {
     state.currentTab = 'profile';
+    if (typeof updateSidebarActiveUI === 'function') updateSidebarActiveUI(state.previousTab === 'recently-played' ? 'recently-played' : 'profile');
+    if (typeof updateHeaderSearchUI === 'function') updateHeaderSearchUI('profile');
     const user = AuthManager.getCurrentUser();
 
     let profile = null;
@@ -2422,8 +2438,31 @@ async function initApp() {
   /* ==========================================================================
      Tab Switching Navigation
      ========================================================================== */
+  function updateSidebarActiveUI(tabName) {
+    document.querySelectorAll('.sidebar-nav-item[data-tab]').forEach(tab => {
+      tab.classList.toggle('active', tab.dataset.tab === tabName);
+    });
+  }
+
+  function updateHeaderSearchUI(activeTab) {
+    const searchBox = el.desktopTopSearchBox || document.getElementById('desktop-top-search-box');
+    if (!searchBox) return;
+
+    const isHome = (activeTab === 'home');
+    if (isHome) {
+      searchBox.classList.remove('nav-search-hidden');
+      searchBox.setAttribute('aria-hidden', 'false');
+    } else {
+      searchBox.classList.add('nav-search-hidden');
+      searchBox.setAttribute('aria-hidden', 'true');
+      if (el.desktopTopSearchInput && document.activeElement === el.desktopTopSearchInput) {
+        el.desktopTopSearchInput.blur();
+      }
+    }
+  }
+
   function switchTab(tabName, autoFocusSearch = false) {
-    if (AuthManager.isGuest() && (tabName === 'library' || tabName === 'profile')) {
+    if (AuthManager.isGuest() && (tabName === 'library' || tabName === 'profile' || tabName === 'recently-played')) {
       openAuthModal('🔒 Please sign in to access ' + (tabName === 'library' ? 'Your Library' : 'Profile') + '.', true);
       return;
     }
@@ -2432,15 +2471,20 @@ async function initApp() {
     state.previousTab = state.currentTab;
     state.currentTab = tabName;
 
+    if (el.viewport) {
+      el.viewport.scrollTop = 0;
+    }
+
     // Update bottom nav tabs
     el.navTabs.forEach(tab => {
-      tab.classList.toggle('active', tab.dataset.tab === tabName);
+      tab.classList.toggle('active', tab.dataset.tab === tabName || (['explore', 'artists', 'albums'].includes(tabName) && tab.dataset.tab === 'search'));
     });
 
     // Update desktop sidebar tabs
-    document.querySelectorAll('.sidebar-nav-item[data-tab]').forEach(tab => {
-      tab.classList.toggle('active', tab.dataset.tab === tabName);
-    });
+    updateSidebarActiveUI(tabName);
+
+    // Header compact search bar: ONLY visible on 'home' tab
+    updateHeaderSearchUI(tabName);
 
     switch (tabName) {
       case 'home':
@@ -2449,11 +2493,28 @@ async function initApp() {
       case 'search':
         renderSearchView(autoFocusSearch);
         break;
+      case 'explore':
+        state.searchQuery = '';
+        state.searchFilter = 'all';
+        renderSearchView(false);
+        break;
+      case 'artists':
+        state.searchFilter = 'artists';
+        renderSearchView(true);
+        break;
+      case 'albums':
+        state.searchFilter = 'albums';
+        renderSearchView(true);
+        break;
+      case 'recently-played':
+      case 'profile':
+        renderProfileView();
+        break;
       case 'library':
         renderLibraryView();
         break;
-      case 'profile':
-        renderProfileView();
+      case 'liked-songs':
+        openLikedSongsView();
         break;
       default:
         renderHomeView();
@@ -2912,41 +2973,11 @@ async function initApp() {
   // Desktop Sidebar Navigation
   document.querySelectorAll('.sidebar-nav-item[data-tab]').forEach(item => {
     item.addEventListener('click', () => {
-      switchTab(item.dataset.tab);
+      const tab = item.dataset.tab;
+      const autoFocus = (tab === 'artists' || tab === 'albums' || tab === 'search');
+      switchTab(tab, autoFocus);
     });
   });
-
-  const sidebarExploreBtn = document.getElementById('sidebar-tab-explore');
-  if (sidebarExploreBtn) {
-    sidebarExploreBtn.addEventListener('click', () => {
-      state.searchQuery = '';
-      state.searchFilter = 'all';
-      switchTab('search', false);
-    });
-  }
-
-  const sidebarRecentlyPlayedBtn = document.getElementById('sidebar-tab-recently-played');
-  if (sidebarRecentlyPlayedBtn) {
-    sidebarRecentlyPlayedBtn.addEventListener('click', () => {
-      switchTab('profile');
-    });
-  }
-
-  const sidebarArtistsBtn = document.getElementById('sidebar-tab-artists');
-  if (sidebarArtistsBtn) {
-    sidebarArtistsBtn.addEventListener('click', () => {
-      state.searchFilter = 'artists';
-      switchTab('search', true);
-    });
-  }
-
-  const sidebarAlbumsBtn = document.getElementById('sidebar-tab-albums');
-  if (sidebarAlbumsBtn) {
-    sidebarAlbumsBtn.addEventListener('click', () => {
-      state.searchFilter = 'albums';
-      switchTab('search', true);
-    });
-  }
 
   if (el.sidebarBrandBtn) {
     el.sidebarBrandBtn.addEventListener('click', () => switchTab('home'));
@@ -2984,7 +3015,7 @@ async function initApp() {
   if (el.desktopTopSearchInput) {
     el.desktopTopSearchInput.addEventListener('focus', () => {
       if (state.currentTab !== 'search') {
-        switchTab('search', false);
+        switchTab('search', true);
       }
     });
 

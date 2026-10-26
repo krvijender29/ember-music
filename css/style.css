@@ -685,8 +685,34 @@ body::before {
 }
 
 /* ==========================================================================
-   Screen 6: SEARCH SCREEN
+   Screen 6: SEARCH SCREEN (Apple Music-Inspired Premium Slide-Up Animation)
    ========================================================================== */
+@keyframes searchSlideUp {
+  0% {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.search-screen-container {
+  width: 100%;
+  animation: searchSlideUp 380ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  will-change: transform, opacity;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .search-screen-container {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+    will-change: auto !important;
+  }
+}
+
 .filter-pills-row {
   display: flex;
   gap: 8px;

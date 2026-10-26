@@ -332,6 +332,9 @@ def saavn_get(call_name, extra_params=None):
 # Ember Request Handler
 # ==============================================================================
 class EmberHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, directory=os.path.dirname(os.path.abspath(__file__)), **kwargs)
+
     def end_headers(self):
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")

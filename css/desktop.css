@@ -471,7 +471,33 @@
     padding: 0 14px;
     height: 42px;
     flex: 1;
-    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    max-width: 440px;
+    opacity: 1;
+    visibility: visible;
+    transform: translateX(0);
+    transform-origin: left center;
+    transition: opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+                transform 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+                max-width 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+                padding 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+                margin 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+                border-color 0.2s ease,
+                background 0.2s ease,
+                box-shadow 0.2s ease;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+
+  .desktop-top-search-box.nav-search-hidden {
+    opacity: 0 !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+    max-width: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    border-color: transparent !important;
+    border-width: 0 !important;
+    transform: translateX(-16px) !important;
   }
 
   .desktop-top-search-box:focus-within {
