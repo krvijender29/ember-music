@@ -656,18 +656,24 @@ class MusicPlayer {
 
   addToQueue(track) {
     if (!track) return;
+    const wasEmpty = this.queue.length === 0 && !this.currentTrack;
     this.queue.push(track);
     this.originalQueue.push(track);
+    if (wasEmpty) {
+      this.queueIndex = 0;
+      this.loadTrack(track, false);
+    }
     this.notifyQueueChange();
   }
 
   playNext(track) {
     if (!track) return;
-    if (this.queue.length === 0) {
+    if (this.queue.length === 0 || !this.currentTrack) {
       this.loadTrack(track, true);
       return;
     }
-    this.queue.splice(this.queueIndex + 1, 0, track);
+    const nextIdx = Math.max(0, this.queueIndex + 1);
+    this.queue.splice(nextIdx, 0, track);
     this.originalQueue.push(track);
     this.notifyQueueChange();
   }

@@ -252,18 +252,17 @@ async function initApp() {
           <div class="song-row-artist">${escapeHtml(track.artist || track.channelTitle || 'Ember Artist')}</div>
         </div>
         <div class="song-row-actions">
-          <button class="btn-row-action btn-row-like ${isLiked ? 'liked' : ''}" data-track-id="${escapeHtml(track.id)}" title="Like">
+          <button class="btn-row-action btn-row-like ${isLiked ? 'liked' : ''}" data-track-id="${escapeHtml(track.id)}" title="Like" aria-label="Like">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="${isLiked ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
           </button>
           ${isCustomPlaylistView ? `
-            <button class="btn-row-action btn-row-remove-from-pl" data-track-id="${escapeHtml(track.id)}" title="Remove from Playlist" style="color:var(--text-dim); font-size:0.85rem;">
+            <button class="btn-row-action btn-row-remove-from-pl" data-track-id="${escapeHtml(track.id)}" title="Remove from Playlist" aria-label="Remove from Playlist" style="color:var(--text-dim); font-size:0.85rem;">
               ✕
             </button>
-          ` : `
-            <button class="btn-row-action btn-row-add-pl" data-track-id="${escapeHtml(track.id)}" title="Add to Playlist">
-              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="16" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/><line x1="19" y1="16" x2="19" y2="22"/><line x1="16" y1="19" x2="22" y2="19"/></svg>
-            </button>
-          `}
+          ` : ''}
+          <button class="btn-row-action btn-row-more" data-track-id="${escapeHtml(track.id)}" title="More Options" aria-label="More Options">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="2.2"/><circle cx="19" cy="12" r="2.2"/><circle cx="5" cy="12" r="2.2"/></svg>
+          </button>
         </div>
       </div>
     `;
@@ -363,7 +362,7 @@ async function initApp() {
       row.dataset.rowBound = 'true';
 
       row.addEventListener('click', async (e) => {
-        if (e.target.closest('.btn-row-like') || e.target.closest('.btn-row-add-pl') || e.target.closest('.btn-row-remove-from-pl')) return;
+        if (e.target.closest('.btn-row-like') || e.target.closest('.btn-row-more') || e.target.closest('.btn-row-add-pl') || e.target.closest('.btn-row-remove-from-pl')) return;
 
         if (AuthManager.isGuest()) {
           openAuthModal('🔒 Please sign in to stream this song on EMBER.', true);
@@ -411,6 +410,27 @@ async function initApp() {
           } else {
             showToast(isLikedNow ? `Added to Liked Songs` : `Removed from Liked Songs`, 'success');
           }
+        }
+      });
+    });
+
+    // 3-Dot More Options button click (Plays next, Adds to queue, Adds to playlist, etc.)
+    container.querySelectorAll('.btn-row-more').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const trackId = btn.dataset.trackId;
+        const row = btn.closest('.ember-song-row');
+        const targetTrack = (tracksList && tracksList.find(t => t.id === trackId)) ||
+          (player.currentTrack && player.currentTrack.id === trackId ? player.currentTrack : null) ||
+          (player.queue && player.queue.find(t => t.id === trackId)) ||
+          {
+            id: trackId,
+            title: row?.querySelector('.song-row-title')?.textContent || 'Track',
+            artist: row?.querySelector('.song-row-artist')?.textContent || 'Ember Artist',
+            thumbnail: row?.querySelector('.song-row-thumb')?.src || 'assets/images/ember_banner.jpg'
+          };
+        if (targetTrack) {
+          openSongOptionsModal(targetTrack);
         }
       });
     });
@@ -2879,26 +2899,38 @@ async function initApp() {
     }
   });
 
-  // Song Options Modal (3-Dot Button in Fullscreen Player)
+  // Song Options Modal (3-Dot Button in Fullscreen Player & Song Rows)
   const songOptionsModal = document.getElementById('song-options-modal');
   const optArt = document.getElementById('options-modal-art');
   const optTitle = document.getElementById('options-modal-title');
   const optArtist = document.getElementById('options-modal-artist');
   const btnCloseSongOptions = document.getElementById('btn-close-song-options');
+  const optBtnPlayNext = document.getElementById('opt-btn-play-next');
+  const optBtnAddQueue = document.getElementById('opt-btn-add-queue');
   const optBtnAddPlaylist = document.getElementById('opt-btn-add-playlist');
   const optBtnViewArtist = document.getElementById('opt-btn-view-artist');
   const optBtnShareSong = document.getElementById('opt-btn-share-song');
+  let activeOptionsTrack = null;
 
   function openSongOptionsModal(track) {
     if (!songOptionsModal || !track) return;
+    activeOptionsTrack = track;
     if (optArt) optArt.src = track.thumbnail || 'assets/images/ember_banner.jpg';
     if (optTitle) optTitle.textContent = track.title || 'Unknown Track';
-    if (optArtist) optArtist.textContent = cleanArtistName(track.artist, track.title) || 'Ember';
+    if (optArtist) optArtist.textContent = cleanArtistName(track.artist || track.channelTitle, track.title) || 'Ember';
     songOptionsModal.style.display = 'flex';
   }
 
   function closeSongOptionsModal() {
     if (songOptionsModal) songOptionsModal.style.display = 'none';
+  }
+
+  if (songOptionsModal) {
+    songOptionsModal.addEventListener('click', (e) => {
+      if (e.target === songOptionsModal) {
+        closeSongOptionsModal();
+      }
+    });
   }
 
   if (el.btnSheetOptions) {
@@ -2916,20 +2948,56 @@ async function initApp() {
     btnCloseSongOptions.addEventListener('click', closeSongOptionsModal);
   }
 
+  if (optBtnPlayNext) {
+    optBtnPlayNext.addEventListener('click', () => {
+      const track = activeOptionsTrack || player.currentTrack;
+      closeSongOptionsModal();
+      if (!track) {
+        showToast('No song selected', 'info');
+        return;
+      }
+      player.playNext(track);
+      showToast(`Will play "${track.title}" next`, 'success');
+      renderQueueList();
+    });
+  }
+
+  if (optBtnAddQueue) {
+    optBtnAddQueue.addEventListener('click', () => {
+      const track = activeOptionsTrack || player.currentTrack;
+      closeSongOptionsModal();
+      if (!track) {
+        showToast('No song selected', 'info');
+        return;
+      }
+      player.addToQueue(track);
+      showToast(`Added "${track.title}" to queue`, 'success');
+      renderQueueList();
+    });
+  }
+
   if (optBtnAddPlaylist) {
     optBtnAddPlaylist.addEventListener('click', () => {
+      const track = activeOptionsTrack || player.currentTrack;
       closeSongOptionsModal();
-      if (player.currentTrack) {
-        openAddToPlaylistModal(player.currentTrack);
+      if (!track) {
+        showToast('No song selected', 'info');
+        return;
       }
+      if (AuthManager.isGuest()) {
+        openAuthModal('🔒 Please sign in to save songs to playlists.', true);
+        return;
+      }
+      openAddToPlaylistModal(track);
     });
   }
 
   if (optBtnViewArtist) {
     optBtnViewArtist.addEventListener('click', () => {
+      const track = activeOptionsTrack || player.currentTrack;
       closeSongOptionsModal();
-      if (player.currentTrack) {
-        const art = cleanArtistName(player.currentTrack.artist, player.currentTrack.title);
+      if (track) {
+        const art = cleanArtistName(track.artist || track.channelTitle, track.title);
         closeNowPlayingSheet();
         if (art && typeof window.emberExecuteSearch === 'function') {
           switchTab('search', false);
@@ -2941,14 +3009,21 @@ async function initApp() {
 
   if (optBtnShareSong) {
     optBtnShareSong.addEventListener('click', () => {
+      const track = activeOptionsTrack || player.currentTrack;
       closeSongOptionsModal();
-      if (player.currentTrack) {
-        const shareText = `🎵 Listening to "${player.currentTrack.title}" by ${cleanArtistName(player.currentTrack.artist, player.currentTrack.title)} on EMBER Music! ${window.location.origin}`;
+      if (track) {
+        const art = cleanArtistName(track.artist || track.channelTitle, track.title);
+        const shareText = `🎵 Listening to "${track.title}" by ${art} on EMBER Music! ${window.location.origin}`;
         navigator.clipboard.writeText(shareText).catch(() => {});
         showToast('Song info copied to clipboard!', 'success');
       }
     });
   }
+
+  // Auto-sync play queue changes to the UI
+  player.onQueueChange = () => {
+    renderQueueList();
+  };
 
   // Music Player Scrubber & Timeline Dragging
   function getSafeDuration() {
