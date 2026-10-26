@@ -784,17 +784,26 @@ async function initApp() {
         <input type="text" class="ember-search-input" id="home-search-input" placeholder="Search songs, artists, playlists...">
       </div>
 
-      <!-- Hero Banner -->
+      <!-- Cinematic Editorial Hero Banner (Apple Music Inspired) -->
       <div class="good-morning-banner" id="good-morning-hero">
-        <img class="banner-bg-img" src="assets/images/ember_banner.jpg" alt="Home Banner">
+        <img class="banner-bg-img" src="${escapeHtml(displayHistoryCards[0]?.thumbnail || 'assets/images/ember_banner.jpg')}" alt="Hero Artwork">
         <div class="banner-gradient-overlay"></div>
+        <div class="banner-glow-effect"></div>
         <div class="banner-text-content">
+          <div class="hero-editorial-badge"><span class="badge-dot"></span> FEATURED STATION</div>
           <h2>${greeting}${escapeHtml(userName)}</h2>
-          <p>${topArtist ? `Vibing with ${escapeHtml(topArtist)} and your favorite soundscapes.` : `Let's make today sound better.`}</p>
+          <p>${topArtist ? `Vibing with ${escapeHtml(topArtist)} and curated soundscapes tailored for you.` : `Immerse in pure 320kbps high-fidelity soundscapes.`}</p>
+          <div class="hero-actions-row">
+            <button class="hero-play-action-btn" id="banner-play-btn" title="Play Featured Music">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4"/></svg>
+              <span>Play Now</span>
+            </button>
+            <button class="hero-secondary-action-btn" id="banner-queue-btn" title="Add to Queue">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+              <span>Add to Queue</span>
+            </button>
+          </div>
         </div>
-        <button class="banner-play-circle" id="banner-play-btn" title="Resume Playback">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4"/></svg>
-        </button>
       </div>
 
       <!-- Top Section: Jump Back In (Listening History) or Discover -->
@@ -945,6 +954,23 @@ async function initApp() {
           showToast(`Playing "${displayHistoryCards[0].title}"`, 'success');
         } else {
           showToast('Search songs or artists to start listening!', 'info');
+        }
+      });
+    }
+
+    // Event: Hero Add to Queue Button
+    const bannerQueueBtn = document.getElementById('banner-queue-btn');
+    if (bannerQueueBtn) {
+      bannerQueueBtn.addEventListener('click', () => {
+        if (AuthManager.isGuest()) {
+          openAuthModal('🔒 Please sign in to queue music on EMBER.', true);
+          return;
+        }
+        if (displayHistoryCards.length > 0) {
+          displayHistoryCards.forEach(t => player.addToQueue(t));
+          showToast(`Added ${displayHistoryCards.length} tracks to queue`, 'success');
+        } else {
+          showToast('No tracks available to queue', 'info');
         }
       });
     }
@@ -2457,11 +2483,34 @@ async function initApp() {
     });
   }
 
+  /* Dynamic Ambient Artwork Backdrop (Apple Music Signature Blur) */
+  function updateAmbientBackground(imgUrl) {
+    if (!imgUrl) return;
+    const bgUrl = `url("${imgUrl}")`;
+    const ambientLayer = document.getElementById('ambient-art-layer');
+    if (ambientLayer) {
+      ambientLayer.style.backgroundImage = bgUrl;
+    }
+    const sheetAmbient = document.getElementById('sheet-ambient-layer');
+    if (sheetAmbient) {
+      sheetAmbient.style.backgroundImage = bgUrl;
+    }
+  }
+
   /* ==========================================================================
      Player Callbacks & Engine Sync
      ========================================================================== */
   player.onTrackChange = (track) => {
-    if (!track) return;
+    if (!track) {
+      const ambientLayer = document.getElementById('ambient-art-layer');
+      if (ambientLayer) ambientLayer.style.backgroundImage = 'none';
+      const sheetAmbient = document.getElementById('sheet-ambient-layer');
+      if (sheetAmbient) sheetAmbient.style.backgroundImage = 'none';
+      return;
+    }
+
+    // Dynamic Ambient Backdrop Blur
+    updateAmbientBackground(track.thumbnail);
 
     // Mini Player
     el.miniTitle.textContent = track.title;
@@ -2860,6 +2909,38 @@ async function initApp() {
       switchTab(item.dataset.tab);
     });
   });
+
+  const sidebarExploreBtn = document.getElementById('sidebar-tab-explore');
+  if (sidebarExploreBtn) {
+    sidebarExploreBtn.addEventListener('click', () => {
+      state.searchQuery = '';
+      state.searchFilter = 'all';
+      switchTab('search', false);
+    });
+  }
+
+  const sidebarRecentlyPlayedBtn = document.getElementById('sidebar-tab-recently-played');
+  if (sidebarRecentlyPlayedBtn) {
+    sidebarRecentlyPlayedBtn.addEventListener('click', () => {
+      switchTab('profile');
+    });
+  }
+
+  const sidebarArtistsBtn = document.getElementById('sidebar-tab-artists');
+  if (sidebarArtistsBtn) {
+    sidebarArtistsBtn.addEventListener('click', () => {
+      state.searchFilter = 'artists';
+      switchTab('search', true);
+    });
+  }
+
+  const sidebarAlbumsBtn = document.getElementById('sidebar-tab-albums');
+  if (sidebarAlbumsBtn) {
+    sidebarAlbumsBtn.addEventListener('click', () => {
+      state.searchFilter = 'albums';
+      switchTab('search', true);
+    });
+  }
 
   if (el.sidebarBrandBtn) {
     el.sidebarBrandBtn.addEventListener('click', () => switchTab('home'));
