@@ -268,12 +268,100 @@ async function initApp() {
     `;
   }
 
-  function bindSongRows(container, tracksList) {
+  /**
+   * Plays a track selected from search, and fills the subsequent playback queue
+   * with the user's listening history in shuffled order.
+   */
+  async function playSearchTrackWithShuffledHistory(selectedTrack, searchResults = []) {
+    if (!selectedTrack) return;
+
+    if (AuthManager.isGuest()) {
+      openAuthModal('🔒 Please sign in to stream music on EMBER.', true);
+      return;
+    }
+
+    // 1. Concurrently fetch user listening history (Supabase + LocalStorage)
+    const user = AuthManager.getCurrentUser();
+    let dbHistory = [];
+    try {
+      if (user?.uid) {
+        dbHistory = await DbManager.getListeningHistory(user.uid, 50);
+      }
+    } catch (_) {}
+    const localHistory = StorageManager.getRecentTracks() || [];
+
+    // Map local tracks by ID and title for fast resolution of audioUrl/metadata
+    const localMap = new Map();
+    localHistory.forEach(t => {
+      if (t && t.id) localMap.set(t.id, t);
+      if (t && t.title) localMap.set(t.title.trim().toLowerCase(), t);
+    });
+
+    // 2. Deduplicate history pool and exclude the currently selected track
+    const selId = (selectedTrack.id || '').trim();
+    const selTitle = (selectedTrack.title || '').trim().toLowerCase();
+    const selArtist = (selectedTrack.artist || selectedTrack.channelTitle || '').trim().toLowerCase();
+    const selComp = `${selTitle}:::${selArtist}`;
+
+    const seen = new Set();
+    if (selId) seen.add(`id:${selId}`);
+    if (selTitle) seen.add(`title:${selComp}`);
+
+    const pool = [];
+    const allHistory = [...localHistory, ...dbHistory];
+
+    for (const t of allHistory) {
+      if (!t || !t.title) continue;
+      const tId = (t.id || '').trim();
+      const tTitle = (t.title || '').trim().toLowerCase();
+      const tArtist = (t.artist || t.channelTitle || '').trim().toLowerCase();
+      const tComp = `${tTitle}:::${tArtist}`;
+
+      if (tId && seen.has(`id:${tId}`)) continue;
+      if (tTitle && seen.has(`title:${tComp}`)) continue;
+
+      if (tId) seen.add(`id:${tId}`);
+      if (tTitle) seen.add(`title:${tComp}`);
+
+      // Prefer local copy if it has audioUrl
+      const localCopy = localMap.get(tId) || localMap.get(tTitle);
+      const trackObj = (localCopy && localCopy.audioUrl) ? localCopy : t;
+      pool.push(trackObj);
+    }
+
+    // 3. Fallback if user has no listening history yet: use other search results
+    if (pool.length === 0 && Array.isArray(searchResults)) {
+      searchResults.forEach(t => {
+        if (!t || !t.title) return;
+        const tId = (t.id || '').trim();
+        const tTitle = (t.title || '').trim().toLowerCase();
+        if ((tId && tId === selId) || (tTitle && tTitle === selTitle)) return;
+        pool.push(t);
+      });
+    }
+
+    // 4. Shuffle the pool using Fisher-Yates shuffle
+    for (let i = pool.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [pool[i], pool[j]] = [pool[j], pool[i]];
+    }
+
+    // 5. Set player queue: [selectedTrack, ...shuffledHistory] and play
+    const fullQueue = [selectedTrack, ...pool];
+    player.setQueue(fullQueue, 0, true);
+
+    showToast(`Playing "${selectedTrack.title}" · Up next: Shuffled history (${pool.length} tracks)`, 'info');
+  }
+
+  function bindSongRows(container, tracksList, options = {}) {
     if (!container) return;
 
     // Song row click -> play track (Mandatory Auth Protected)
     container.querySelectorAll('.ember-song-row').forEach(row => {
-      row.addEventListener('click', (e) => {
+      if (row.dataset.rowBound) return;
+      row.dataset.rowBound = 'true';
+
+      row.addEventListener('click', async (e) => {
         if (e.target.closest('.btn-row-like') || e.target.closest('.btn-row-add-pl') || e.target.closest('.btn-row-remove-from-pl')) return;
 
         if (AuthManager.isGuest()) {
@@ -284,7 +372,12 @@ async function initApp() {
         const trackId = row.dataset.trackId;
         const selectedIndex = tracksList.findIndex(t => t.id === trackId);
         if (selectedIndex >= 0) {
-          player.setQueue(tracksList, selectedIndex, true);
+          const selectedTrack = tracksList[selectedIndex];
+          if (options.isSearch || state.currentTab === 'search') {
+            await playSearchTrackWithShuffledHistory(selectedTrack, tracksList);
+          } else {
+            player.setQueue(tracksList, selectedIndex, true);
+          }
         }
       });
     });
@@ -1445,17 +1538,17 @@ async function initApp() {
 
           // Bind song rows
           const songsList = document.getElementById('search-all-songs-list');
-          if (songsList) bindSongRows(songsList, songs);
+          if (songsList) bindSongRows(songsList, songs, { isSearch: true, searchResults: songs });
 
           // Bind Top Song Hero
           const topSongHero = dynamicResults.querySelector('.top-song-hero');
           if (topSongHero && topResult && topResult.isSong) {
-            topSongHero.addEventListener('click', () => {
+            topSongHero.addEventListener('click', async () => {
               if (AuthManager.isGuest()) {
                 openAuthModal('🔒 Please sign in to stream music on EMBER.', true);
                 return;
               }
-              player.setQueue([topResult, ...songs], 0, true);
+              await playSearchTrackWithShuffledHistory(topResult, songs);
             });
           }
 
@@ -1521,7 +1614,7 @@ async function initApp() {
           `;
 
           const songsContainer = document.getElementById('search-songs-full-list');
-          bindSongRows(songsContainer, songs);
+          bindSongRows(songsContainer, songs, { isSearch: true, searchResults: songs });
 
           const loadMoreBtn = document.getElementById('btn-load-more-songs');
           if (loadMoreBtn) {
@@ -1535,7 +1628,7 @@ async function initApp() {
                   songs = [...songs, ...newTracks];
                   const newHtml = newTracks.map((track, i) => createSongRowHtml(track, songs.length - newTracks.length + i)).join('');
                   songsContainer.insertAdjacentHTML('beforeend', newHtml);
-                  bindSongRows(songsContainer, songs);
+                  bindSongRows(songsContainer, songs, { isSearch: true, searchResults: songs });
                   const badge = document.getElementById('songs-count-badge');
                   if (badge) badge.textContent = `${songs.length} tracks`;
                 }
@@ -1683,7 +1776,7 @@ async function initApp() {
               ${fallback.map((track, i) => createSongRowHtml(track, i)).join('')}
             </div>
           `;
-          bindSongRows(document.getElementById('search-results-list'), fallback);
+          bindSongRows(document.getElementById('search-results-list'), fallback, { isSearch: true, searchResults: fallback });
         } else {
           dynamicResults.innerHTML = `
             <div style="text-align:center; padding:40px 20px; color:var(--text-gray);">

@@ -305,6 +305,20 @@ class MusicPlayer {
     if (this.onTrackChange) this.onTrackChange(track);
     this.updateMediaSession(track);
 
+    // Auto-resolve direct 320kbps CDN stream if missing (e.g. from history or Supabase)
+    if (!track.audioUrl && track.title) {
+      try {
+        const res = await fetch(`/api/resolve?title=${encodeURIComponent(track.title)}&artist=${encodeURIComponent(track.artist || '')}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.success && data.track && data.track.audioUrl) {
+            track.audioUrl = data.track.audioUrl;
+            if (!track.thumbnail && data.track.thumbnail) track.thumbnail = data.track.thumbnail;
+          }
+        }
+      } catch (_) {}
+    }
+
     // Engine Selection:
     // If track has direct audioUrl (e.g. from local server or CDN), use HTML5 audio.
     // Otherwise use YouTube IFrame player engine.
