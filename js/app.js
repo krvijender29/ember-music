@@ -936,7 +936,7 @@ async function initApp() {
   }
 
   /* ==========================================================================
-     Screen 6: SEARCH VIEW
+     Screen 6: SEARCH VIEW (YouTube Music Catalog Discovery Experience)
      ========================================================================== */
   function renderSearchView(autoFocus = false) {
     state.currentTab = 'search';
@@ -946,18 +946,20 @@ async function initApp() {
 
     el.viewport.innerHTML = `
       <div class="search-screen-container">
-        <!-- Search Input Bar -->
-        <div class="ember-search-box search-input-wrapper">
+        <!-- Search Input Bar with Autocomplete Dropdown -->
+        <div class="ember-search-box search-input-wrapper" id="search-input-wrapper">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <input type="text" class="ember-search-input search-main-input" id="search-input" placeholder="Search songs, artists, playlists..." value="${escapeHtml(state.searchQuery)}">
+          <input type="text" class="ember-search-input search-main-input" id="search-input" placeholder="Search songs, artists, albums, playlists..." value="${escapeHtml(state.searchQuery)}" autocomplete="off" spellcheck="false">
           <button class="search-clear-btn" id="search-clear-btn" style="display:${state.searchQuery ? 'block' : 'none'};">✕</button>
+          <div class="search-autocomplete-dropdown" id="search-autocomplete-dropdown" style="display:none;"></div>
         </div>
 
-        <!-- Filter Chips Row -->
+        <!-- Filter Chips Row (All, Songs, Artists, Albums, Playlists) -->
         <div class="filter-pills-row" style="margin-top:14px; margin-bottom:18px;">
           <button class="ember-pill ${state.searchFilter === 'all' ? 'active' : ''}" data-filter="all">All</button>
           <button class="ember-pill ${state.searchFilter === 'songs' ? 'active' : ''}" data-filter="songs">Songs</button>
           <button class="ember-pill ${state.searchFilter === 'artists' ? 'active' : ''}" data-filter="artists">Artists</button>
+          <button class="ember-pill ${state.searchFilter === 'albums' ? 'active' : ''}" data-filter="albums">Albums</button>
           <button class="ember-pill ${state.searchFilter === 'playlists' ? 'active' : ''}" data-filter="playlists">Playlists</button>
         </div>
 
@@ -969,6 +971,7 @@ async function initApp() {
     `;
 
     const searchInput = document.getElementById('search-input');
+    const searchDropdown = document.getElementById('search-autocomplete-dropdown');
     const clearBtn = document.getElementById('search-clear-btn');
     const dynamicResults = document.getElementById('search-dynamic-results');
 
@@ -977,7 +980,7 @@ async function initApp() {
       DbManager.getSearchHistory(user.uid).then(synced => {
         if (synced && synced.length > 0 && !state.searchQuery.trim()) {
           recentSearches = synced;
-          if (dynamicResults && !dynamicResults.querySelector('.ember-song-row')) {
+          if (dynamicResults && !dynamicResults.querySelector('.ember-song-row') && !dynamicResults.querySelector('.top-match-hero')) {
             dynamicResults.innerHTML = renderBrowseGenresGrid(recentSearches);
             bindBrowseCards();
           }
@@ -994,7 +997,7 @@ async function initApp() {
       setTimeout(() => searchInput.focus(), 100);
     }
 
-    // Filter Chips
+    // Filter Chips click handlers
     document.querySelectorAll('.filter-pills-row .ember-pill').forEach(pill => {
       pill.addEventListener('click', () => {
         document.querySelectorAll('.filter-pills-row .ember-pill').forEach(p => p.classList.remove('active'));
@@ -1013,30 +1016,106 @@ async function initApp() {
         if (searchInput) searchInput.value = '';
         if (el.desktopTopSearchInput) el.desktopTopSearchInput.value = '';
         clearBtn.style.display = 'none';
+        if (searchDropdown) searchDropdown.style.display = 'none';
         dynamicResults.innerHTML = renderBrowseGenresGrid(recentSearches);
         bindBrowseCards();
       });
     }
 
-    // Live Debounced Input
-    if (searchInput) {
-      searchInput.addEventListener('input', (e) => {
+    // Attach Autocomplete to Search Inputs
+    setupAutocomplete(searchInput, searchDropdown);
+    const desktopDropdown = document.getElementById('desktop-autocomplete-dropdown');
+    if (el.desktopTopSearchInput && desktopDropdown) {
+      setupAutocomplete(el.desktopTopSearchInput, desktopDropdown);
+    }
+
+    function setupAutocomplete(inputEl, dropdownEl) {
+      if (!inputEl || !dropdownEl) return;
+      let activeIndex = -1;
+
+      inputEl.addEventListener('input', (e) => {
         const query = e.target.value;
         state.searchQuery = query;
-        if (el.desktopTopSearchInput && el.desktopTopSearchInput.value !== query) {
-          el.desktopTopSearchInput.value = query;
-        }
         if (clearBtn) clearBtn.style.display = query ? 'block' : 'none';
 
         if (state.searchDebounceTimer) clearTimeout(state.searchDebounceTimer);
-        state.searchDebounceTimer = setTimeout(() => {
-          if (query.trim()) {
-            triggerSearch(query.trim());
-          } else {
-            dynamicResults.innerHTML = renderBrowseGenresGrid(recentSearches);
-            bindBrowseCards();
+        state.searchDebounceTimer = setTimeout(async () => {
+          if (!query.trim()) {
+            dropdownEl.style.display = 'none';
+            if (dynamicResults && !dynamicResults.querySelector('.ember-song-row') && !dynamicResults.querySelector('.top-match-hero')) {
+              dynamicResults.innerHTML = renderBrowseGenresGrid(recentSearches);
+              bindBrowseCards();
+            }
+            return;
           }
-        }, 300);
+
+          try {
+            const suggestions = await YouTubeAPI.getSuggestions(query.trim());
+            activeIndex = -1;
+
+            if (suggestions && suggestions.length > 0 && document.activeElement === inputEl) {
+              dropdownEl.innerHTML = suggestions.map((s, idx) => `
+                <div class="autocomplete-item" data-index="${idx}" data-query="${escapeHtml(s)}">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                  <span class="autocomplete-item-text">${escapeHtml(s)}</span>
+                  <span class="autocomplete-item-action">Search</span>
+                </div>
+              `).join('');
+              dropdownEl.style.display = 'flex';
+
+              dropdownEl.querySelectorAll('.autocomplete-item').forEach(item => {
+                item.addEventListener('click', () => {
+                  const q = item.dataset.query;
+                  if (q) executeSearch(q);
+                  dropdownEl.style.display = 'none';
+                });
+              });
+            } else {
+              dropdownEl.style.display = 'none';
+            }
+          } catch (_) {
+            dropdownEl.style.display = 'none';
+          }
+        }, 160);
+      });
+
+      inputEl.addEventListener('keydown', (e) => {
+        const items = dropdownEl.querySelectorAll('.autocomplete-item');
+
+        if (e.key === 'ArrowDown') {
+          if (items.length === 0) return;
+          e.preventDefault();
+          activeIndex = (activeIndex + 1) % items.length;
+          highlightItem();
+        } else if (e.key === 'ArrowUp') {
+          if (items.length === 0) return;
+          e.preventDefault();
+          activeIndex = (activeIndex - 1 + items.length) % items.length;
+          highlightItem();
+        } else if (e.key === 'Enter') {
+          dropdownEl.style.display = 'none';
+          if (activeIndex >= 0 && items[activeIndex]) {
+            const q = items[activeIndex].dataset.query;
+            if (q) executeSearch(q);
+          } else if (inputEl.value.trim()) {
+            executeSearch(inputEl.value.trim());
+          }
+        } else if (e.key === 'Escape') {
+          dropdownEl.style.display = 'none';
+        }
+
+        function highlightItem() {
+          items.forEach((it, i) => it.classList.toggle('active', i === activeIndex));
+          if (items[activeIndex]) {
+            inputEl.value = items[activeIndex].dataset.query;
+          }
+        }
+      });
+
+      document.addEventListener('click', (e) => {
+        if (!inputEl.contains(e.target) && !dropdownEl.contains(e.target)) {
+          dropdownEl.style.display = 'none';
+        }
       });
     }
 
@@ -1045,6 +1124,9 @@ async function initApp() {
       if (searchInput) searchInput.value = query;
       if (el.desktopTopSearchInput) el.desktopTopSearchInput.value = query;
       if (clearBtn) clearBtn.style.display = 'block';
+      if (searchDropdown) searchDropdown.style.display = 'none';
+      const dDropdown = document.getElementById('desktop-autocomplete-dropdown');
+      if (dDropdown) dDropdown.style.display = 'none';
       triggerSearch(query);
     }
 
@@ -1163,65 +1245,413 @@ async function initApp() {
       });
     }
 
-    // Background sync with Supabase for cloud-persisted search history
-    if (user?.uid) {
-      DbManager.getSearchHistory(user.uid).then(cloudQueries => {
-        if (cloudQueries && cloudQueries.length > 0 && !state.searchQuery.trim()) {
-          recentSearches = cloudQueries;
-          if (dynamicResults) {
-            dynamicResults.innerHTML = renderBrowseGenresGrid(recentSearches);
-            bindBrowseCards();
-          }
-        }
+    // Deduplicate songs by ID and title+artist
+    function deduplicateTracks(tracks) {
+      if (!tracks || !Array.isArray(tracks)) return [];
+      const seenIds = new Set();
+      const seenTitles = new Set();
+      return tracks.filter(t => {
+        if (!t || !t.id) return false;
+        if (seenIds.has(t.id)) return false;
+        const normKey = `${(t.title || '').toLowerCase()}|${(t.artist || '').toLowerCase()}`;
+        if (seenTitles.has(normKey)) return false;
+        seenIds.add(t.id);
+        seenTitles.add(normKey);
+        return true;
       });
     }
 
     async function triggerSearch(query) {
-      // Save search history to Supabase PostgreSQL & local mobile/system storage
+      if (!query || !query.trim()) return;
+      const cleanQ = query.trim();
+
+      // Save search history to Supabase PostgreSQL & local storage
       const activeUser = AuthManager.getCurrentUser();
-      DbManager.addSearchHistory(activeUser?.uid, query);
-      if (!recentSearches.includes(query.trim())) {
-        recentSearches.unshift(query.trim());
+      DbManager.addSearchHistory(activeUser?.uid, cleanQ);
+      if (!recentSearches.includes(cleanQ)) {
+        recentSearches.unshift(cleanQ);
       }
 
       dynamicResults.innerHTML = `
-        <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; padding:40px 0; color:var(--text-gray);">
-          <div style="width:28px; height:28px; border:2px solid var(--text-white); border-top-color:transparent; border-radius:50%; animation:spin 0.8s linear infinite; margin-bottom:12px;"></div>
-          <span style="font-size:0.85rem;">Searching Soundscape...</span>
+        <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; padding:50px 0; color:var(--text-gray);">
+          <div style="width:32px; height:32px; border:3px solid var(--text-white); border-top-color:transparent; border-radius:50%; animation:spin 0.8s linear infinite; margin-bottom:14px;"></div>
+          <span style="font-size:0.88rem; font-weight:600; color:var(--text-white);">Searching YouTube Music...</span>
+          <span style="font-size:0.75rem; color:var(--text-dim); margin-top:4px;">Finding songs, artists, albums, and playlists</span>
         </div>
         <style>@keyframes spin { 100% { transform: rotate(360deg); } }</style>
       `;
 
       try {
-        let results = await YouTubeAPI.search(query, 24, state.searchFilter);
-        if (!results || results.length === 0) {
-          results = YouTubeAPI.fallbackSearch(query);
-        }
+        const res = await YouTubeAPI.search(cleanQ, 24, state.searchFilter);
+        const currentFilter = state.searchFilter || 'all';
 
-        if (!results || results.length === 0) {
+        // ----------------------------------------------------------------------
+        // 1. ALL TAB (Unified Overview: Top Result, Songs, Artists, Albums, Playlists)
+        // ----------------------------------------------------------------------
+        if (currentFilter === 'all') {
+          const topResult = res.topResult;
+          const songs = deduplicateTracks(res.songs || res.results || []);
+          const artists = res.artists || [];
+          const albums = res.albums || [];
+          const playlists = res.playlists || [];
+
+          const hasAny = topResult || songs.length > 0 || artists.length > 0 || albums.length > 0 || playlists.length > 0;
+          if (!hasAny) {
+            renderEmptySearchState(cleanQ);
+            return;
+          }
+
+          let html = '';
+
+          // Top Match Hero Card
+          if (topResult) {
+            if (topResult.isArtist) {
+              html += `
+                <div class="top-match-hero" data-artist-name="${escapeHtml(topResult.title)}">
+                  <div class="top-match-left">
+                    <img class="top-match-art is-artist-avatar" src="${escapeHtml(topResult.thumbnail || 'assets/images/ember_banner.jpg')}" alt="${escapeHtml(topResult.title)}">
+                    <div class="top-match-info">
+                      <span class="top-match-badge">Top Artist</span>
+                      <div class="top-match-title">${escapeHtml(topResult.title)}</div>
+                      <div class="top-match-subtitle">Official Artist • YouTube Music</div>
+                    </div>
+                  </div>
+                  <button class="top-match-play-btn btn-explore-top-artist" title="Explore ${escapeHtml(topResult.title)}">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+                  </button>
+                </div>
+              `;
+            } else if (topResult.isSong) {
+              html += `
+                <div class="top-match-hero top-song-hero" data-track-id="${escapeHtml(topResult.id)}">
+                  <div class="top-match-left">
+                    <img class="top-match-art" src="${escapeHtml(topResult.thumbnail || 'assets/images/ember_banner.jpg')}" alt="${escapeHtml(topResult.title)}">
+                    <div class="top-match-info">
+                      <span class="top-match-badge">Top Song</span>
+                      <div class="top-match-title">${escapeHtml(topResult.title)}</div>
+                      <div class="top-match-subtitle">${escapeHtml(topResult.artist)} • ${escapeHtml(topResult.duration || '03:30')}</div>
+                    </div>
+                  </div>
+                  <button class="top-match-play-btn btn-play-top-song" title="Play ${escapeHtml(topResult.title)}">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 18 12 6 20 6 4"/></svg>
+                  </button>
+                </div>
+              `;
+            }
+          }
+
+          // Songs Section
+          if (songs.length > 0) {
+            html += `
+              <div class="section-title-row" style="margin-bottom:12px;">
+                <h3>Songs &amp; Music Videos</h3>
+                <button class="section-see-all btn-switch-category" data-target-filter="songs">See all</button>
+              </div>
+              <div class="song-list-container" id="search-all-songs-list" style="margin-bottom:28px;">
+                ${songs.slice(0, 6).map((track, i) => createSongRowHtml(track, i)).join('')}
+              </div>
+            `;
+          }
+
+          // Artists Section
+          if (artists.length > 0) {
+            html += `
+              <div class="section-title-row" style="margin-bottom:14px;">
+                <h3>Artists</h3>
+                <button class="section-see-all btn-switch-category" data-target-filter="artists">See all</button>
+              </div>
+              <div class="search-artists-carousel">
+                ${artists.slice(0, 6).map(a => `
+                  <div class="search-artist-card" data-artist-name="${escapeHtml(a.title)}">
+                    <img class="artist-avatar-circle" src="${escapeHtml(a.thumbnail)}" alt="${escapeHtml(a.title)}" loading="lazy">
+                    <div class="search-artist-name">${escapeHtml(a.title)}</div>
+                    <div class="search-artist-role">Artist</div>
+                  </div>
+                `).join('')}
+              </div>
+            `;
+          }
+
+          // Albums Section
+          if (albums.length > 0) {
+            html += `
+              <div class="section-title-row" style="margin-bottom:14px; margin-top:8px;">
+                <h3>Albums</h3>
+                <button class="section-see-all btn-switch-category" data-target-filter="albums">See all</button>
+              </div>
+              <div class="search-collections-grid">
+                ${albums.slice(0, 6).map(al => `
+                  <div class="search-collection-card" data-collection-id="${escapeHtml(al.id)}" data-type="album">
+                    <div class="collection-cover-wrapper">
+                      <img src="${escapeHtml(al.cover || al.thumbnail)}" alt="${escapeHtml(al.title)}" loading="lazy">
+                      <button class="collection-hover-play" title="Play ${escapeHtml(al.title)}">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 18 12 6 20 6 4"/></svg>
+                      </button>
+                    </div>
+                    <div class="collection-card-title">${escapeHtml(al.title)}</div>
+                    <div class="collection-card-subtitle">${escapeHtml(al.subtitle || 'Album')}</div>
+                  </div>
+                `).join('')}
+              </div>
+            `;
+          }
+
+          // Playlists Section
+          if (playlists.length > 0) {
+            html += `
+              <div class="section-title-row" style="margin-bottom:14px; margin-top:8px;">
+                <h3>Featured Playlists &amp; Moods</h3>
+                <button class="section-see-all btn-switch-category" data-target-filter="playlists">See all</button>
+              </div>
+              <div class="search-collections-grid">
+                ${playlists.slice(0, 6).map(pl => `
+                  <div class="search-collection-card" data-collection-id="${escapeHtml(pl.id)}" data-type="playlist">
+                    <div class="collection-cover-wrapper">
+                      <img src="${escapeHtml(pl.cover || pl.thumbnail)}" alt="${escapeHtml(pl.title)}" loading="lazy">
+                      <button class="collection-hover-play" title="Play ${escapeHtml(pl.title)}">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 18 12 6 20 6 4"/></svg>
+                      </button>
+                    </div>
+                    <div class="collection-card-title">${escapeHtml(pl.title)}</div>
+                    <div class="collection-card-subtitle">${escapeHtml(pl.subtitle || 'Playlist')}</div>
+                  </div>
+                `).join('')}
+              </div>
+            `;
+          }
+
+          dynamicResults.innerHTML = html;
+
+          // Bind song rows
+          const songsList = document.getElementById('search-all-songs-list');
+          if (songsList) bindSongRows(songsList, songs);
+
+          // Bind Top Song Hero
+          const topSongHero = dynamicResults.querySelector('.top-song-hero');
+          if (topSongHero && topResult && topResult.isSong) {
+            topSongHero.addEventListener('click', () => {
+              if (AuthManager.isGuest()) {
+                openAuthModal('🔒 Please sign in to stream music on EMBER.', true);
+                return;
+              }
+              player.setQueue([topResult, ...songs], 0, true);
+            });
+          }
+
+          // Bind Top Artist Hero
+          const topArtistHero = dynamicResults.querySelector('.top-match-hero[data-artist-name]');
+          if (topArtistHero) {
+            topArtistHero.addEventListener('click', () => {
+              const artistName = topArtistHero.dataset.artistName;
+              if (artistName) {
+                switchCategoryFilter('songs', `${artistName} songs`);
+              }
+            });
+          }
+
+          // Bind Category Switchers ("See All")
+          dynamicResults.querySelectorAll('.btn-switch-category').forEach(btn => {
+            btn.addEventListener('click', () => {
+              const target = btn.dataset.targetFilter;
+              if (target) switchCategoryFilter(target, cleanQ);
+            });
+          });
+
+          // Bind Artist Cards
+          dynamicResults.querySelectorAll('.search-artist-card').forEach(card => {
+            card.addEventListener('click', () => {
+              const artistName = card.dataset.artistName;
+              if (artistName) switchCategoryFilter('songs', `${artistName} songs`);
+            });
+          });
+
+          // Bind Collection Cards (Albums & Playlists)
+          dynamicResults.querySelectorAll('.search-collection-card').forEach(card => {
+            card.addEventListener('click', () => {
+              const pid = card.dataset.collectionId;
+              const title = card.querySelector('.collection-card-title')?.textContent;
+              const subtitle = card.querySelector('.collection-card-subtitle')?.textContent;
+              const img = card.querySelector('img')?.src;
+              if (pid) {
+                openPlaylistView(pid, false, { id: pid, title, subtitle, thumbnail: img });
+              }
+            });
+          });
+
+        // ----------------------------------------------------------------------
+        // 2. SONGS TAB (Full List with Pagination)
+        // ----------------------------------------------------------------------
+        } else if (currentFilter === 'songs') {
+          let songs = deduplicateTracks(res.results || []);
+          if (songs.length === 0) {
+            renderEmptySearchState(cleanQ);
+            return;
+          }
+
           dynamicResults.innerHTML = `
-            <div style="text-align:center; padding:40px 20px; color:var(--text-gray);">
-              <p style="font-size:0.95rem; font-weight:600; color:var(--text-white); margin-bottom:6px;">No sound found for "${escapeHtml(query)}"</p>
-              <p style="font-size:0.75rem;">Check your spelling or search for another artist, mood, or track.</p>
+            <div class="section-title-row" style="margin-bottom:12px;">
+              <h3>Songs &amp; Music Videos</h3>
+              <span style="font-size:0.75rem; color:var(--text-dim);" id="songs-count-badge">${songs.length} tracks</span>
             </div>
+            <div class="song-list-container" id="search-songs-full-list">
+              ${songs.map((track, i) => createSongRowHtml(track, i)).join('')}
+            </div>
+            ${res.nextPageToken ? `<button class="btn-load-more" id="btn-load-more-songs" data-token="${escapeHtml(res.nextPageToken)}">Load More Songs</button>` : ''}
           `;
-          return;
+
+          const songsContainer = document.getElementById('search-songs-full-list');
+          bindSongRows(songsContainer, songs);
+
+          const loadMoreBtn = document.getElementById('btn-load-more-songs');
+          if (loadMoreBtn) {
+            loadMoreBtn.addEventListener('click', async () => {
+              loadMoreBtn.textContent = 'Loading more...';
+              loadMoreBtn.disabled = true;
+              try {
+                const nextRes = await YouTubeAPI.search(cleanQ, 24, 'songs', loadMoreBtn.dataset.token);
+                const newTracks = deduplicateTracks(nextRes.results || []);
+                if (newTracks.length > 0) {
+                  songs = [...songs, ...newTracks];
+                  const newHtml = newTracks.map((track, i) => createSongRowHtml(track, songs.length - newTracks.length + i)).join('');
+                  songsContainer.insertAdjacentHTML('beforeend', newHtml);
+                  bindSongRows(songsContainer, songs);
+                  const badge = document.getElementById('songs-count-badge');
+                  if (badge) badge.textContent = `${songs.length} tracks`;
+                }
+                if (nextRes.nextPageToken) {
+                  loadMoreBtn.dataset.token = nextRes.nextPageToken;
+                  loadMoreBtn.textContent = 'Load More Songs';
+                  loadMoreBtn.disabled = false;
+                } else {
+                  loadMoreBtn.remove();
+                }
+              } catch (e) {
+                loadMoreBtn.textContent = 'Failed to load more';
+              }
+            });
+          }
+
+        // ----------------------------------------------------------------------
+        // 3. ARTISTS TAB
+        // ----------------------------------------------------------------------
+        } else if (currentFilter === 'artists') {
+          const artists = res.results || [];
+          if (artists.length === 0) {
+            renderEmptySearchState(cleanQ);
+            return;
+          }
+
+          dynamicResults.innerHTML = `
+            <div class="section-title-row" style="margin-bottom:16px;">
+              <h3>Artists</h3>
+              <span style="font-size:0.75rem; color:var(--text-dim);">${artists.length} found</span>
+            </div>
+            <div class="search-artists-carousel" id="search-artists-grid" style="grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));">
+              ${artists.map(a => `
+                <div class="search-artist-card" data-artist-name="${escapeHtml(a.title)}">
+                  <img class="artist-avatar-circle" src="${escapeHtml(a.thumbnail)}" alt="${escapeHtml(a.title)}" loading="lazy">
+                  <div class="search-artist-name">${escapeHtml(a.title)}</div>
+                  <div class="search-artist-role">Artist</div>
+                </div>
+              `).join('')}
+            </div>
+            ${res.nextPageToken ? `<button class="btn-load-more" id="btn-load-more-artists" data-token="${escapeHtml(res.nextPageToken)}">Load More Artists</button>` : ''}
+          `;
+
+          dynamicResults.querySelectorAll('.search-artist-card').forEach(card => {
+            card.addEventListener('click', () => {
+              const artistName = card.dataset.artistName;
+              if (artistName) switchCategoryFilter('songs', `${artistName} songs`);
+            });
+          });
+
+        // ----------------------------------------------------------------------
+        // 4. ALBUMS TAB
+        // ----------------------------------------------------------------------
+        } else if (currentFilter === 'albums') {
+          const albums = res.results || [];
+          if (albums.length === 0) {
+            renderEmptySearchState(cleanQ);
+            return;
+          }
+
+          dynamicResults.innerHTML = `
+            <div class="section-title-row" style="margin-bottom:16px;">
+              <h3>Albums</h3>
+              <span style="font-size:0.75rem; color:var(--text-dim);">${albums.length} collections</span>
+            </div>
+            <div class="search-collections-grid" id="search-albums-grid">
+              ${albums.map(al => `
+                <div class="search-collection-card" data-collection-id="${escapeHtml(al.id)}" data-type="album">
+                  <div class="collection-cover-wrapper">
+                    <img src="${escapeHtml(al.cover || al.thumbnail)}" alt="${escapeHtml(al.title)}" loading="lazy">
+                    <button class="collection-hover-play" title="Play ${escapeHtml(al.title)}">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 18 12 6 20 6 4"/></svg>
+                    </button>
+                  </div>
+                  <div class="collection-card-title">${escapeHtml(al.title)}</div>
+                  <div class="collection-card-subtitle">${escapeHtml(al.subtitle || 'Album')}</div>
+                </div>
+              `).join('')}
+            </div>
+            ${res.nextPageToken ? `<button class="btn-load-more" id="btn-load-more-albums" data-token="${escapeHtml(res.nextPageToken)}">Load More Albums</button>` : ''}
+          `;
+
+          dynamicResults.querySelectorAll('.search-collection-card').forEach(card => {
+            card.addEventListener('click', () => {
+              const pid = card.dataset.collectionId;
+              const title = card.querySelector('.collection-card-title')?.textContent;
+              const subtitle = card.querySelector('.collection-card-subtitle')?.textContent;
+              const img = card.querySelector('img')?.src;
+              if (pid) openPlaylistView(pid, false, { id: pid, title, subtitle, thumbnail: img });
+            });
+          });
+
+        // ----------------------------------------------------------------------
+        // 5. PLAYLISTS TAB
+        // ----------------------------------------------------------------------
+        } else if (currentFilter === 'playlists') {
+          const playlists = res.results || [];
+          if (playlists.length === 0) {
+            renderEmptySearchState(cleanQ);
+            return;
+          }
+
+          dynamicResults.innerHTML = `
+            <div class="section-title-row" style="margin-bottom:16px;">
+              <h3>Playlists &amp; Mood Collections</h3>
+              <span style="font-size:0.75rem; color:var(--text-dim);">${playlists.length} playlists</span>
+            </div>
+            <div class="search-collections-grid" id="search-playlists-grid">
+              ${playlists.map(pl => `
+                <div class="search-collection-card" data-collection-id="${escapeHtml(pl.id)}" data-type="playlist">
+                  <div class="collection-cover-wrapper">
+                    <img src="${escapeHtml(pl.cover || pl.thumbnail)}" alt="${escapeHtml(pl.title)}" loading="lazy">
+                    <button class="collection-hover-play" title="Play ${escapeHtml(pl.title)}">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 18 12 6 20 6 4"/></svg>
+                    </button>
+                  </div>
+                  <div class="collection-card-title">${escapeHtml(pl.title)}</div>
+                  <div class="collection-card-subtitle">${escapeHtml(pl.subtitle || 'Playlist')}</div>
+                </div>
+              `).join('')}
+            </div>
+            ${res.nextPageToken ? `<button class="btn-load-more" id="btn-load-more-playlists" data-token="${escapeHtml(res.nextPageToken)}">Load More Playlists</button>` : ''}
+          `;
+
+          dynamicResults.querySelectorAll('.search-collection-card').forEach(card => {
+            card.addEventListener('click', () => {
+              const pid = card.dataset.collectionId;
+              const title = card.querySelector('.collection-card-title')?.textContent;
+              const subtitle = card.querySelector('.collection-card-subtitle')?.textContent;
+              const img = card.querySelector('img')?.src;
+              if (pid) openPlaylistView(pid, false, { id: pid, title, subtitle, thumbnail: img });
+            });
+          });
         }
-
-        dynamicResults.innerHTML = `
-          <div class="section-title-row" style="margin-bottom:12px;">
-            <h3>Top Results</h3>
-            <span style="font-size:0.75rem; color:var(--text-dim);">${results.length} found</span>
-          </div>
-          <div class="song-list-container" id="search-results-list">
-            ${results.map((track, i) => createSongRowHtml(track, i)).join('')}
-          </div>
-        `;
-
-        bindSongRows(document.getElementById('search-results-list'), results);
       } catch (err) {
-        console.warn('[Ember Search] Live search failed, using fallback catalog:', err);
-        const fallback = YouTubeAPI.fallbackSearch(query);
+        console.warn('[Ember Search] Search failed, attempting catalog fallback:', err);
+        const fallback = YouTubeAPI.fallbackSearch(cleanQ);
         if (fallback && fallback.length > 0) {
           dynamicResults.innerHTML = `
             <div class="section-title-row" style="margin-bottom:12px;">
@@ -1236,13 +1666,43 @@ async function initApp() {
         } else {
           dynamicResults.innerHTML = `
             <div style="text-align:center; padding:40px 20px; color:var(--text-gray);">
-              <p style="font-size:0.9rem; color:#ff6666; margin-bottom:6px;">Unable to reach search stream</p>
+              <p style="font-size:0.95rem; color:#ff6666; margin-bottom:6px;">Unable to reach YouTube Music</p>
               <p style="font-size:0.75rem;">${escapeHtml(err.message)}</p>
             </div>
           `;
         }
       }
     }
+
+    function switchCategoryFilter(targetFilter, newQuery = '') {
+      state.searchFilter = targetFilter;
+      document.querySelectorAll('.filter-pills-row .ember-pill').forEach(p => {
+        p.classList.toggle('active', p.dataset.filter === targetFilter);
+      });
+      if (newQuery) {
+        state.searchQuery = newQuery;
+        if (searchInput) searchInput.value = newQuery;
+        if (el.desktopTopSearchInput) el.desktopTopSearchInput.value = newQuery;
+      }
+      triggerSearch(state.searchQuery);
+    }
+
+    function renderEmptySearchState(q) {
+      dynamicResults.innerHTML = `
+        <div style="text-align:center; padding:50px 20px; color:var(--text-gray);">
+          <p style="font-size:1rem; font-weight:700; color:var(--text-white); margin-bottom:8px;">No sound found for "${escapeHtml(q)}"</p>
+          <p style="font-size:0.8rem; color:var(--text-dim); margin-bottom:16px;">Try checking your spelling or search for another singer, genre, or mood.</p>
+          <div style="display:flex; justify-content:center; gap:8px; flex-wrap:wrap;">
+            <button class="ember-pill" onclick="window.emberExecuteSearch('Arijit Singh')">Arijit Singh</button>
+            <button class="ember-pill" onclick="window.emberExecuteSearch('Kesariya')">Kesariya</button>
+            <button class="ember-pill" onclick="window.emberExecuteSearch('The Weeknd')">The Weeknd</button>
+            <button class="ember-pill" onclick="window.emberExecuteSearch('Hindi romantic songs')">Romantic Songs</button>
+          </div>
+        </div>
+      `;
+    }
+
+    window.emberExecuteSearch = executeSearch;
 
     if (state.searchQuery.trim()) {
       triggerSearch(state.searchQuery.trim());
@@ -1252,9 +1712,9 @@ async function initApp() {
   }
 
   /* ==========================================================================
-     Screen 7: PLAYLIST VIEW (Zero Social Follow/Following Features)
+     Screen 7: PLAYLIST & ALBUM VIEW (Personal & YouTube Music Collections)
      ========================================================================== */
-  async function openPlaylistView(playlistId, autoPlay = false) {
+  async function openPlaylistView(playlistId, autoPlay = false, catalogMeta = null) {
     state.previousTab = state.currentTab;
     state.currentTab = 'playlist';
     state.activePlaylistId = playlistId;
@@ -1283,6 +1743,26 @@ async function initApp() {
         stats: `${(custom.tracks || []).length} songs`
       };
       playlistTracks = custom.tracks || [];
+    } else {
+      // YouTube Music playlist or album collection
+      isCustom = false;
+      showToast('Loading collection tracks...', 'info');
+      try {
+        playlistTracks = await YouTubeAPI.getPlaylistTracks(playlistId, 50);
+      } catch (err) {
+        console.warn('Failed to load playlist tracks:', err);
+      }
+
+      if (playlistTracks && playlistTracks.length > 0) {
+        playlist = {
+          id: playlistId,
+          title: catalogMeta?.title || playlistTracks[0]?.channelTitle || 'YouTube Music Collection',
+          subtitle: catalogMeta?.subtitle || playlistTracks[0]?.channelTitle || 'Album • YouTube Music',
+          cover: catalogMeta?.cover || catalogMeta?.thumbnail || playlistTracks[0]?.thumbnail || 'assets/images/ember_banner.jpg',
+          description: catalogMeta?.description || 'Curated album and playlist collection discovered via YouTube Music.',
+          stats: `${playlistTracks.length} songs`
+        };
+      }
     }
 
     if (!playlist) {
@@ -1844,6 +2324,7 @@ async function initApp() {
         renderHomeView();
     }
   }
+  window.switchTab = switchTab;
 
   // Bind Bottom Nav Tabs
   el.navTabs.forEach(tab => {
@@ -2324,15 +2805,6 @@ async function initApp() {
       if (sInput && sInput.value !== q) sInput.value = q;
       const cBtn = document.getElementById('search-clear-btn');
       if (cBtn) cBtn.style.display = q ? 'block' : 'none';
-
-      if (state.searchDebounceTimer) clearTimeout(state.searchDebounceTimer);
-      state.searchDebounceTimer = setTimeout(() => {
-        if (state.currentTab !== 'search') {
-          switchTab('search', false);
-        } else {
-          renderSearchView();
-        }
-      }, 300);
     });
 
     el.desktopTopSearchInput.addEventListener('keydown', (e) => {
@@ -2341,8 +2813,8 @@ async function initApp() {
         state.searchQuery = q;
         if (state.currentTab !== 'search') {
           switchTab('search', false);
-        } else {
-          renderSearchView();
+        } else if (typeof window.emberExecuteSearch === 'function') {
+          window.emberExecuteSearch(q);
         }
       }
     });
