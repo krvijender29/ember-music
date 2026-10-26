@@ -8,7 +8,8 @@
 
 const YouTubeAPI = {
   BASE_URL: 'https://www.googleapis.com/youtube/v3',
-  DEFAULT_KEY: 'AIzaSyDUnACXuxfMyOy3OrCgRSgm3eTmsEFY9xw',
+  DEFAULT_KEY: 'AIzaSyBRrPickOQtOYJUh9bXNzMjIJuBIqZwCpM',
+  BACKUP_KEY: 'AIzaSyDUnACXuxfMyOy3OrCgRSgm3eTmsEFY9xw',
 
   getApiKey() {
     return (typeof StorageManager !== 'undefined' && StorageManager.getApiKey()) || this.DEFAULT_KEY;

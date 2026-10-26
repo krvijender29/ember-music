@@ -11,10 +11,23 @@ import urllib.parse
 import json
 import re
 import os
+import sys
+import time
+import base64
+import html
 import concurrent.futures
 
-YOUTUBE_API_KEY = os.environ.get("YOUTUBE_API_KEY", "AIzaSyDUnACXuxfMyOy3OrCgRSgm3eTmsEFY9xw")
+YOUTUBE_API_KEYS = [
+    k.strip() for k in os.environ.get("YOUTUBE_API_KEY", "").split(",") if k.strip()
+] or [
+    "AIzaSyBRrPickOQtOYJUh9bXNzMjIJuBIqZwCpM",
+    "AIzaSyDUnACXuxfMyOy3OrCgRSgm3eTmsEFY9xw"
+]
 YT_BASE_URL = "https://www.googleapis.com/youtube/v3"
+
+# In-memory search cache (12-hour TTL)
+SEARCH_CACHE = {}
+CACHE_TTL = 12 * 3600
 
 
 # ==============================================================================
@@ -69,11 +82,31 @@ def clean_title(title):
 
 def yt_fetch(endpoint, params):
     params_copy = dict(params)
-    params_copy["key"] = YOUTUBE_API_KEY
-    url = f"{YT_BASE_URL}/{endpoint}?" + urllib.parse.urlencode(params_copy)
-    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
-    with urllib.request.urlopen(req, timeout=9) as resp:
-        return json.loads(resp.read().decode("utf-8"))
+    last_err = None
+    for api_key in YOUTUBE_API_KEYS:
+        params_copy["key"] = api_key
+        url = f"{YT_BASE_URL}/{endpoint}?" + urllib.parse.urlencode(params_copy)
+        req = urllib.request.Request(
+            url,
+            headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+                "Referer": "http://localhost:4321/"
+            }
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=9) as resp:
+                return json.loads(resp.read().decode("utf-8"))
+        except urllib.error.HTTPError as e:
+            last_err = e
+            if e.code in (403, 429):
+                continue
+            raise e
+        except Exception as e:
+            last_err = e
+            continue
+    if last_err:
+        raise last_err
+    return {}
 
 
 def enrich_videos(video_ids):
@@ -184,6 +217,190 @@ def format_playlist_item(item, is_album=False):
 # ==============================================================================
 # Vercel Serverless Function Handler
 # ==============================================================================
+# ==============================================================================
+# Pure Python DES Decryptor & Unlimited Fallback Catalog (JioSaavn 320kbps)
+# ==============================================================================
+IP = [
+    58, 50, 42, 34, 26, 18, 10, 2, 60, 52, 44, 36, 28, 20, 12, 4,
+    62, 54, 46, 38, 30, 22, 14, 6, 64, 56, 48, 40, 32, 24, 16, 8,
+    57, 49, 41, 33, 25, 17, 9, 1, 59, 51, 43, 35, 27, 19, 11, 3,
+    61, 53, 45, 37, 29, 21, 13, 5, 63, 55, 47, 39, 31, 23, 15, 7
+]
+FP = [
+    40, 8, 48, 16, 56, 24, 64, 32, 39, 7, 47, 15, 55, 23, 63, 31,
+    38, 6, 46, 14, 54, 22, 62, 30, 37, 5, 45, 13, 53, 21, 61, 29,
+    36, 4, 44, 12, 52, 20, 60, 28, 35, 3, 43, 11, 51, 19, 59, 27,
+    34, 2, 42, 10, 50, 18, 58, 26, 33, 1, 41, 9, 49, 17, 57, 25
+]
+PC1 = [
+    57, 49, 41, 33, 25, 17, 9, 1, 58, 50, 42, 34, 26, 18,
+    10, 2, 59, 51, 43, 35, 27, 19, 11, 3, 60, 52, 44, 36,
+    63, 55, 47, 39, 31, 23, 15, 7, 62, 54, 46, 38, 30, 22,
+    14, 6, 61, 53, 45, 37, 29, 21, 13, 5, 28, 20, 12, 4
+]
+PC2 = [
+    14, 17, 11, 24, 1, 5, 3, 28, 15, 6, 21, 10,
+    23, 19, 12, 4, 26, 8, 16, 7, 27, 20, 13, 2,
+    41, 52, 31, 37, 47, 55, 30, 40, 51, 45, 33, 48,
+    44, 49, 39, 56, 34, 53, 46, 42, 50, 36, 29, 32
+]
+SHIFTS = [1, 1, 2, 2, 2, 2, 2, 2, 1, 2, 2, 2, 2, 2, 2, 1]
+E = [
+    32, 1, 2, 3, 4, 5, 4, 5, 6, 7, 8, 9,
+    8, 9, 10, 11, 12, 13, 12, 13, 14, 15, 16, 17,
+    16, 17, 18, 19, 20, 21, 20, 21, 22, 23, 24, 25,
+    24, 25, 26, 27, 28, 29, 28, 29, 30, 31, 32, 1
+]
+S_BOXES = [
+    [[14, 4, 13, 1, 2, 15, 11, 8, 3, 10, 6, 12, 5, 9, 0, 7],
+     [0, 15, 7, 4, 14, 2, 13, 1, 10, 6, 12, 11, 9, 5, 3, 8],
+     [4, 1, 14, 8, 13, 6, 2, 11, 15, 12, 9, 7, 3, 10, 5, 0],
+     [15, 12, 8, 2, 4, 9, 1, 7, 5, 11, 3, 14, 10, 0, 6, 13]],
+    [[15, 1, 8, 14, 6, 11, 3, 4, 9, 7, 2, 13, 12, 0, 5, 10],
+     [3, 13, 4, 7, 15, 2, 8, 14, 12, 0, 1, 10, 6, 9, 11, 5],
+     [0, 14, 7, 11, 10, 4, 13, 1, 5, 8, 12, 6, 9, 3, 2, 15],
+     [13, 8, 10, 1, 3, 15, 4, 2, 11, 6, 7, 12, 0, 5, 14, 9]],
+    [[10, 0, 9, 14, 6, 3, 15, 5, 1, 13, 12, 7, 11, 4, 2, 8],
+     [13, 7, 0, 9, 3, 4, 6, 10, 2, 8, 5, 14, 12, 11, 15, 1],
+     [13, 6, 4, 9, 8, 15, 3, 0, 11, 1, 2, 12, 5, 10, 14, 7],
+     [1, 10, 13, 0, 6, 9, 8, 7, 4, 15, 14, 3, 11, 5, 2, 12]],
+    [[7, 13, 14, 3, 0, 6, 9, 10, 1, 2, 8, 5, 11, 12, 4, 15],
+     [13, 8, 11, 5, 6, 15, 0, 3, 4, 7, 2, 12, 1, 10, 14, 9],
+     [10, 6, 9, 0, 12, 11, 7, 13, 15, 1, 3, 14, 5, 2, 8, 4],
+     [3, 15, 0, 6, 10, 1, 13, 8, 9, 4, 5, 11, 12, 7, 2, 14]],
+    [[2, 12, 4, 1, 7, 10, 11, 6, 8, 5, 3, 15, 13, 0, 14, 9],
+     [14, 11, 2, 12, 4, 7, 13, 1, 5, 0, 15, 10, 3, 9, 8, 6],
+     [4, 2, 1, 11, 10, 13, 7, 8, 15, 9, 12, 5, 6, 3, 0, 14],
+     [11, 8, 12, 7, 1, 14, 2, 13, 6, 15, 0, 9, 10, 4, 5, 3]],
+    [[12, 1, 10, 15, 9, 2, 6, 8, 0, 13, 3, 4, 14, 7, 5, 11],
+     [10, 15, 4, 2, 7, 12, 9, 5, 6, 1, 13, 14, 0, 11, 3, 8],
+     [9, 14, 15, 5, 2, 8, 12, 3, 7, 0, 4, 10, 1, 13, 11, 6],
+     [4, 3, 2, 12, 9, 5, 15, 10, 11, 14, 1, 7, 6, 0, 8, 13]],
+    [[4, 11, 2, 14, 15, 0, 8, 13, 3, 12, 9, 7, 5, 10, 6, 1],
+     [13, 0, 11, 7, 4, 9, 1, 10, 14, 3, 5, 12, 2, 15, 8, 6],
+     [1, 4, 11, 13, 12, 3, 7, 14, 10, 15, 6, 8, 0, 5, 9, 2],
+     [6, 11, 13, 8, 1, 4, 10, 7, 9, 5, 0, 15, 14, 2, 3, 12]],
+    [[13, 2, 8, 4, 6, 15, 11, 1, 10, 9, 3, 14, 5, 0, 12, 7],
+     [1, 15, 13, 8, 10, 3, 7, 4, 12, 5, 6, 11, 0, 14, 9, 2],
+     [7, 11, 4, 1, 9, 12, 14, 2, 0, 6, 10, 13, 15, 3, 5, 8],
+     [2, 1, 14, 7, 4, 10, 8, 13, 15, 12, 9, 0, 3, 5, 6, 11]]
+]
+P = [
+    16, 7, 20, 21, 29, 12, 28, 17, 1, 15, 23, 26, 5, 18, 31, 10,
+    2, 8, 24, 14, 32, 27, 3, 9, 19, 13, 30, 6, 22, 11, 4, 25
+]
+
+def permute(bits, table): return [bits[x - 1] for x in table]
+def bytes_to_bits(b):
+    res = []
+    for byte in b:
+        for i in range(7, -1, -1): res.append((byte >> i) & 1)
+    return res
+def bits_to_bytes(bits):
+    b = bytearray()
+    for i in range(0, len(bits), 8):
+        byte = 0
+        for bit in bits[i:i+8]: byte = (byte << 1) | bit
+        b.append(byte)
+    return bytes(b)
+def generate_subkeys(key_bytes):
+    bits = permute(bytes_to_bits(key_bytes), PC1)
+    C, D = bits[:28], bits[28:]
+    subkeys = []
+    for s in SHIFTS:
+        C = C[s:] + C[:s]
+        D = D[s:] + D[:s]
+        subkeys.append(permute(C + D, PC2))
+    return subkeys
+def feistel_function(R, subkey):
+    exp_R = permute(R, E)
+    xored = [a ^ b for a, b in zip(exp_R, subkey)]
+    output_bits = []
+    for i in range(8):
+        block = xored[i*6:(i+1)*6]
+        row = (block[0] << 1) | block[5]
+        col = (block[1] << 3) | (block[2] << 2) | (block[3] << 1) | block[4]
+        val = S_BOXES[i][row][col]
+        for j in range(3, -1, -1): output_bits.append((val >> j) & 1)
+    return permute(output_bits, P)
+def des_decrypt_block(block_bits, subkeys):
+    permuted = permute(block_bits, IP)
+    L, R = permuted[:32], permuted[32:]
+    for subkey in reversed(subkeys):
+        L_next = R
+        f_res = feistel_function(R, subkey)
+        R_next = [a ^ b for a, b in zip(L, f_res)]
+        L, R = L_next, R_next
+    return permute(R + L, FP)
+def des_decrypt_ecb(encrypted_bytes, key_bytes=b'38346591'):
+    try:
+        subkeys = generate_subkeys(key_bytes)
+        all_bits = bytes_to_bits(encrypted_bytes)
+        dec_bits = []
+        for i in range(0, len(all_bits), 64):
+            dec_bits.extend(des_decrypt_block(all_bits[i:i+64], subkeys))
+        dec_bytes = bits_to_bytes(dec_bits)
+        pad_len = dec_bytes[-1]
+        if 1 <= pad_len <= 8: dec_bytes = dec_bytes[:-pad_len]
+        return dec_bytes.decode('utf-8', errors='ignore')
+    except Exception: return ''
+
+def fallback_music_search(query, limit=20):
+    try:
+        url = (
+            f"https://www.jiosaavn.com/api.php?__call=search.getResults"
+            f"&_format=json&_marker=0&api_version=4&ctx=web6dot0"
+            f"&q={urllib.parse.quote(query)}&n={min(limit, 25)}&p=1"
+        )
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            raw_data = json.loads(resp.read().decode("utf-8"))
+            results = raw_data.get("results", [])
+            songs = []
+            for item in results:
+                title = html.unescape(item.get("title", ""))
+                artists_arr = [a.get("name") for a in item.get("more_info", {}).get("artistMap", {}).get("primary_artists", [])]
+                artist_name = ", ".join(artists_arr) if artists_arr else item.get("subtitle", "Artist")
+                img = item.get("image", "").replace("150x150", "500x500")
+                audio_url = ""
+                enc = item.get("more_info", {}).get("encrypted_media_url")
+                if enc:
+                    try:
+                        raw = des_decrypt_ecb(base64.b64decode(enc))
+                        audio_url = raw.replace("http:", "https:").replace("_96.mp4", "_320.mp4")
+                    except Exception:
+                        pass
+
+                songs.append({
+                    "id": item.get("id"),
+                    "title": title,
+                    "artist": artist_name,
+                    "channelTitle": artist_name,
+                    "thumbnail": img or "assets/images/ember_banner.jpg",
+                    "audioUrl": audio_url,
+                    "duration": "03:30",
+                    "durationSec": 210,
+                    "category": "fallback_track"
+                })
+
+            top_res = {**songs[0], "isSong": True} if songs else None
+            return {
+                "success": True,
+                "query": query,
+                "filter": "all",
+                "source": "fallback_catalog",
+                "topResult": top_res,
+                "songs": songs,
+                "artists": [],
+                "albums": [],
+                "playlists": [],
+                "results": songs
+            }
+    except Exception as err:
+        print("[Ember Fallback Catalog Error]:", err)
+        return {"success": False, "query": query, "songs": [], "results": []}
+
+
 class handler(BaseHTTPRequestHandler):
     def end_headers(self):
         self.send_header("Access-Control-Allow-Origin", "*")
@@ -231,6 +448,14 @@ class handler(BaseHTTPRequestHandler):
             if not query:
                 self.send_json({"success": False, "results": [], "error": "Query required"})
                 return
+
+            cache_key = f"{query.lower()}::{search_filter}::{limit}::{page_token}"
+            now = time.time()
+            if not page_token and cache_key in SEARCH_CACHE:
+                cached_time, cached_payload = SEARCH_CACHE[cache_key]
+                if now - cached_time < CACHE_TTL:
+                    self.send_json(cached_payload)
+                    return
 
             try:
                 if search_filter == "songs":
@@ -401,7 +626,7 @@ class handler(BaseHTTPRequestHandler):
                     elif songs:
                         top_result = {**songs[0], "isSong": True}
 
-                    self.send_json({
+                    payload = {
                         "success": True,
                         "query": query,
                         "filter": "all",
@@ -411,9 +636,18 @@ class handler(BaseHTTPRequestHandler):
                         "albums": albums,
                         "playlists": playlists,
                         "results": songs
-                    })
+                    }
+                    if not page_token:
+                        SEARCH_CACHE[cache_key] = (now, payload)
+                    self.send_json(payload)
                     return
             except Exception as e:
+                fallback_res = fallback_music_search(query, limit)
+                if fallback_res.get("songs"):
+                    if not page_token:
+                        SEARCH_CACHE[cache_key] = (now, fallback_res)
+                    self.send_json(fallback_res)
+                    return
                 self.send_json({"success": False, "results": [], "error": str(e)}, status=500)
             return
 
