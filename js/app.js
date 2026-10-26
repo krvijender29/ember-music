@@ -2193,17 +2193,6 @@ async function initApp() {
           </div>
         </div>
 
-        <!-- VIP Membership Banner -->
-        <div style="width:100%; padding:14px 16px; border-radius:16px; background:linear-gradient(135deg, rgba(255,255,255,0.06) 0%, rgba(22,22,38,0.95) 100%); border:1px solid var(--border-card); margin-bottom:24px; display:flex; align-items:center; justify-content:space-between; cursor:pointer;" id="premium-banner">
-          <div>
-            <div style="font-size:0.92rem; font-weight:800; color:var(--text-white); display:flex; align-items:center; gap:6px;">
-              <span>⚡</span> VIP 320kbps Audio Engine
-            </div>
-            <div style="font-size:0.72rem; color:var(--text-gray); margin-top:2px;">Akamai High-Fidelity CDN • Unlimited Skips</div>
-          </div>
-          <button class="ember-pill active" style="font-size:0.72rem; padding:6px 12px;">Active</button>
-        </div>
-
         <!-- Music Preferences Section (Requirement 5) -->
         <div class="section-title-row" style="width:100%; margin-bottom:10px;">
           <h3>Music Preferences</h3>
