@@ -1901,13 +1901,15 @@ body.now-playing-open {
   background: #000;
 }
 
-/* Toast Container */
+/* Toast Container - Always on top of modals and fullscreen player */
 .ember-toast-box {
-  position: absolute;
-  top: 16px;
-  left: 16px;
-  right: 16px;
-  z-index: 250;
+  position: fixed !important;
+  top: 20px !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  width: 90% !important;
+  max-width: 420px !important;
+  z-index: 3000 !important;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -1934,30 +1936,70 @@ body.now-playing-open {
   to { opacity: 1; transform: translateY(0); }
 }
 
-/* Modal Backdrop & Card (Glassmorphism & Depth) */
+/* Modal Backdrop & Card (Glassmorphism & Depth - Positioned in Front of Fullscreen Player) */
 .ember-modal-backdrop {
-  position: absolute;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.75);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  z-index: 200;
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  height: 100dvh !important;
+  background: rgba(0, 0, 0, 0.8) !important;
+  backdrop-filter: blur(24px) !important;
+  -webkit-backdrop-filter: blur(24px) !important;
+  z-index: 2000 !important;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 20px;
+  box-sizing: border-box !important;
+  pointer-events: auto !important;
 }
 
 .ember-modal-card {
   width: 100%;
-  max-width: 340px;
-  background: rgba(22, 22, 22, 0.92);
-  backdrop-filter: blur(32px);
-  -webkit-backdrop-filter: blur(32px);
-  border: 1px solid var(--border-glass);
-  border-radius: 20px;
-  padding: 24px;
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.95), 0 0 30px rgba(255, 255, 255, 0.05);
+  max-width: 380px;
+  background: rgba(20, 20, 24, 0.95) !important;
+  backdrop-filter: blur(36px) !important;
+  -webkit-backdrop-filter: blur(36px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  border-radius: 20px !important;
+  padding: 22px !important;
+  box-shadow: 0 28px 70px rgba(0, 0, 0, 0.95), 0 0 35px rgba(255, 255, 255, 0.05) !important;
+  position: relative !important;
+  z-index: 2001 !important;
+  animation: modalScaleIn 0.22s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+@keyframes modalScaleIn {
+  from { opacity: 0; transform: scale(0.95) translateY(10px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.options-menu-btn {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  color: #fff;
+  font-size: 0.86rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.options-menu-btn:hover {
+  background: rgba(255, 255, 255, 0.1) !important;
+  border-color: rgba(255, 255, 255, 0.18) !important;
+  transform: translateY(-1px);
+}
+
+.options-menu-btn:active {
+  transform: translateY(0);
 }
 
 .ember-modal-card h3 {

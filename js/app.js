@@ -2774,10 +2774,17 @@ async function initApp() {
     closeNowPlayingSheet();
   });
 
-  // Escape key closes expanded player
+  // Escape key closes open modal or expanded player
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && el.sheet && el.sheet.classList.contains('active')) {
-      closeNowPlayingSheet();
+    if (e.key === 'Escape') {
+      const openModals = Array.from(document.querySelectorAll('.ember-modal-backdrop')).filter(m => m.style.display && m.style.display !== 'none');
+      if (openModals.length > 0) {
+        openModals[openModals.length - 1].style.display = 'none';
+        return;
+      }
+      if (el.sheet && el.sheet.classList.contains('active')) {
+        closeNowPlayingSheet();
+      }
     }
   });
 
@@ -2810,13 +2817,73 @@ async function initApp() {
     }
   });
 
+  // Song Options Modal (3-Dot Button in Fullscreen Player)
+  const songOptionsModal = document.getElementById('song-options-modal');
+  const optArt = document.getElementById('options-modal-art');
+  const optTitle = document.getElementById('options-modal-title');
+  const optArtist = document.getElementById('options-modal-artist');
+  const btnCloseSongOptions = document.getElementById('btn-close-song-options');
+  const optBtnAddPlaylist = document.getElementById('opt-btn-add-playlist');
+  const optBtnViewArtist = document.getElementById('opt-btn-view-artist');
+  const optBtnShareSong = document.getElementById('opt-btn-share-song');
+
+  function openSongOptionsModal(track) {
+    if (!songOptionsModal || !track) return;
+    if (optArt) optArt.src = track.thumbnail || 'assets/images/ember_banner.jpg';
+    if (optTitle) optTitle.textContent = track.title || 'Unknown Track';
+    if (optArtist) optArtist.textContent = cleanArtistName(track.artist, track.title) || 'Ember';
+    songOptionsModal.style.display = 'flex';
+  }
+
+  function closeSongOptionsModal() {
+    if (songOptionsModal) songOptionsModal.style.display = 'none';
+  }
+
   if (el.btnSheetOptions) {
     el.btnSheetOptions.addEventListener('click', (e) => {
       e.stopPropagation();
       if (player.currentTrack) {
-        openAddToPlaylistModal(player.currentTrack);
+        openSongOptionsModal(player.currentTrack);
       } else {
         showToast('No song is currently playing', 'info');
+      }
+    });
+  }
+
+  if (btnCloseSongOptions) {
+    btnCloseSongOptions.addEventListener('click', closeSongOptionsModal);
+  }
+
+  if (optBtnAddPlaylist) {
+    optBtnAddPlaylist.addEventListener('click', () => {
+      closeSongOptionsModal();
+      if (player.currentTrack) {
+        openAddToPlaylistModal(player.currentTrack);
+      }
+    });
+  }
+
+  if (optBtnViewArtist) {
+    optBtnViewArtist.addEventListener('click', () => {
+      closeSongOptionsModal();
+      if (player.currentTrack) {
+        const art = cleanArtistName(player.currentTrack.artist, player.currentTrack.title);
+        closeNowPlayingSheet();
+        if (art && typeof window.emberExecuteSearch === 'function') {
+          switchTab('search', false);
+          window.emberExecuteSearch(art);
+        }
+      }
+    });
+  }
+
+  if (optBtnShareSong) {
+    optBtnShareSong.addEventListener('click', () => {
+      closeSongOptionsModal();
+      if (player.currentTrack) {
+        const shareText = `🎵 Listening to "${player.currentTrack.title}" by ${cleanArtistName(player.currentTrack.artist, player.currentTrack.title)} on EMBER Music! ${window.location.origin}`;
+        navigator.clipboard.writeText(shareText).catch(() => {});
+        showToast('Song info copied to clipboard!', 'success');
       }
     });
   }
@@ -3747,17 +3814,8 @@ async function initApp() {
     }
   });
 
-  // Modal Backdrop Click Dismiss
-  [
-    el.authModal,
-    el.createPlaylistModal,
-    el.onboardingModal,
-    el.editProfileModal,
-    el.credentialsModal,
-    el.queueModal,
-    document.getElementById('add-to-playlist-modal')
-  ].forEach(modalEl => {
-    if (!modalEl) return;
+  // Modal Backdrop Click Dismiss (Applies to all modals including Queue, Song Options, etc.)
+  document.querySelectorAll('.ember-modal-backdrop').forEach(modalEl => {
     modalEl.addEventListener('click', (e) => {
       if (e.target === modalEl) {
         modalEl.style.display = 'none';
