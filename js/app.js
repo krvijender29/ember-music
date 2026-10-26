@@ -2755,16 +2755,78 @@ async function initApp() {
     }
   });
 
+  // ==========================================================================
+  // Screen Wake Lock Controller: Keeps device awake while Fullscreen Player is open
+  // ==========================================================================
+  let wakeLockSentinel = null;
+  const wakeLockBadge = document.getElementById('sheet-wake-lock-badge');
+
+  async function requestScreenWakeLock() {
+    if (!('wakeLock' in navigator)) {
+      console.log('[Ember WakeLock] Screen Wake Lock API not supported on this device/browser.');
+      return;
+    }
+    // Only lock when sheet is active and document is currently visible
+    if (!el.sheet || !el.sheet.classList.contains('active') || document.visibilityState !== 'visible') {
+      return;
+    }
+    try {
+      if (wakeLockSentinel && !wakeLockSentinel.released) {
+        if (wakeLockBadge) wakeLockBadge.style.display = 'inline-flex';
+        return;
+      }
+      wakeLockSentinel = await navigator.wakeLock.request('screen');
+      if (wakeLockBadge) wakeLockBadge.style.display = 'inline-flex';
+      console.log('[Ember WakeLock] Screen wake lock acquired. Device will stay awake.');
+
+      wakeLockSentinel.addEventListener('release', () => {
+        console.log('[Ember WakeLock] Screen wake lock released.');
+        if (wakeLockBadge && (!wakeLockSentinel || wakeLockSentinel.released)) {
+          wakeLockBadge.style.display = 'none';
+        }
+        wakeLockSentinel = null;
+      });
+    } catch (err) {
+      console.warn('[Ember WakeLock] Could not acquire screen wake lock:', err.name, err.message);
+      if (wakeLockBadge) wakeLockBadge.style.display = 'none';
+    }
+  }
+
+  async function releaseScreenWakeLock() {
+    if (wakeLockBadge) wakeLockBadge.style.display = 'none';
+    if (wakeLockSentinel) {
+      try {
+        await wakeLockSentinel.release();
+      } catch (_) {}
+      wakeLockSentinel = null;
+    }
+  }
+
+  // Re-acquire wake lock if tab becomes visible again while fullscreen player is open
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && el.sheet && el.sheet.classList.contains('active')) {
+      requestScreenWakeLock();
+    }
+  });
+
   // Open & Collapse Sheet Helpers
   function openNowPlayingSheet() {
     el.sheet.classList.add('active');
     document.body.classList.add('now-playing-open');
+    requestScreenWakeLock();
   }
 
   function closeNowPlayingSheet() {
     el.sheet.classList.remove('active');
     document.body.classList.remove('now-playing-open');
+    releaseScreenWakeLock();
   }
+
+  window.openNowPlayingSheet = openNowPlayingSheet;
+  window.closeNowPlayingSheet = closeNowPlayingSheet;
+  window.expandNowPlayingSheet = openNowPlayingSheet;
+  window.requestScreenWakeLock = requestScreenWakeLock;
+  window.releaseScreenWakeLock = releaseScreenWakeLock;
 
   el.miniTrackClickArea.addEventListener('click', () => {
     openNowPlayingSheet();
