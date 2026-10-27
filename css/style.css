@@ -2426,6 +2426,7 @@ body.now-playing-open {
 }
 
 .nav-tab-item {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -2439,8 +2440,7 @@ body.now-playing-open {
   height: 100%;
   padding: 0;
   margin: 0;
-  transform: none !important;
-  transition: color 0.15s ease;
+  transition: color 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   user-select: none;
   -webkit-user-select: none;
   touch-action: manipulation;
@@ -2449,32 +2449,54 @@ body.now-playing-open {
 .nav-tab-item svg {
   width: 22px;
   height: 22px;
-  transform: none !important;
-  transition: color 0.15s ease, filter 0.15s ease;
+  transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.2s ease, color 0.2s ease;
 }
 
 .nav-tab-item span {
   font-family: var(--font-display);
   font-size: 0.68rem;
   font-weight: 600;
-  transform: none !important;
-  transition: color 0.15s ease;
+  transition: color 0.2s ease, transform 0.2s ease;
 }
 
 .nav-tab-item:hover,
 .nav-tab-item:active,
 .nav-tab-item:focus {
-  transform: none !important;
+  outline: none;
 }
 
 .nav-tab-item.active {
   color: var(--accent-primary);
-  transform: none !important;
 }
 
 .nav-tab-item.active svg {
-  transform: none !important;
-  filter: drop-shadow(0 0 8px rgba(255, 90, 54, 0.5));
+  animation: navTabPop 0.32s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  filter: drop-shadow(0 0 10px rgba(255, 107, 74, 0.65));
+}
+
+@keyframes navTabPop {
+  0% { transform: scale(0.82); }
+  50% { transform: scale(1.18); }
+  100% { transform: scale(1); }
+}
+
+.nav-tab-item::after {
+  content: '';
+  position: absolute;
+  bottom: 3px;
+  width: 14px;
+  height: 2.5px;
+  border-radius: 2px;
+  background: var(--accent-primary);
+  opacity: 0;
+  transform: scaleX(0);
+  transition: opacity 0.2s ease, transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+  box-shadow: 0 0 8px rgba(255, 90, 54, 0.8);
+}
+
+.nav-tab-item.active::after {
+  opacity: 1;
+  transform: scaleX(1);
 }
 
 /* Hidden YouTube Player Frame */
@@ -4009,6 +4031,7 @@ body.now-playing-open {
 
 #ember-main-viewport {
   view-transition-name: ember-main-viewport;
+  overflow-x: hidden;
 }
 
 .sidebar-wrapper,
@@ -4023,34 +4046,153 @@ body.now-playing-open {
 }
 
 ::view-transition-group(ember-main-viewport) {
-  animation-duration: 160ms;
+  animation-duration: 260ms;
 }
 
+/* Default / Neutral Transition */
 ::view-transition-old(ember-main-viewport) {
-  animation: 120ms cubic-bezier(0.4, 0, 1, 1) both emberViewFadeOut;
+  animation: 180ms cubic-bezier(0.4, 0, 1, 1) both emberViewFadeOut;
 }
 ::view-transition-new(ember-main-viewport) {
-  animation: 160ms cubic-bezier(0, 0, 0.2, 1) both emberViewFadeIn;
+  animation: 260ms cubic-bezier(0.16, 1, 0.3, 1) both emberViewFadeIn;
+}
+
+/* FORWARD Direction (e.g. Home -> Search -> Library -> Profile) */
+html[data-nav-direction="forward"]::view-transition-old(ember-main-viewport) {
+  animation: 200ms cubic-bezier(0.4, 0, 1, 1) both emberSlideOutLeft;
+}
+html[data-nav-direction="forward"]::view-transition-new(ember-main-viewport) {
+  animation: 260ms cubic-bezier(0.16, 1, 0.3, 1) both emberSlideInRight;
+}
+
+/* BACKWARD Direction (e.g. Profile -> Library -> Search -> Home) */
+html[data-nav-direction="backward"]::view-transition-old(ember-main-viewport) {
+  animation: 200ms cubic-bezier(0.4, 0, 1, 1) both emberSlideOutRight;
+}
+html[data-nav-direction="backward"]::view-transition-new(ember-main-viewport) {
+  animation: 260ms cubic-bezier(0.16, 1, 0.3, 1) both emberSlideInLeft;
+}
+
+@keyframes emberSlideOutLeft {
+  from {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+    filter: blur(0px);
+  }
+  to {
+    opacity: 0;
+    transform: translate3d(-36px, 0, 0) scale(0.98);
+    filter: blur(2px);
+  }
+}
+
+@keyframes emberSlideInRight {
+  from {
+    opacity: 0;
+    transform: translate3d(40px, 0, 0) scale(1.015);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes emberSlideOutRight {
+  from {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+    filter: blur(0px);
+  }
+  to {
+    opacity: 0;
+    transform: translate3d(36px, 0, 0) scale(0.98);
+    filter: blur(2px);
+  }
+}
+
+@keyframes emberSlideInLeft {
+  from {
+    opacity: 0;
+    transform: translate3d(-40px, 0, 0) scale(1.015);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
 }
 
 @keyframes emberViewFadeOut {
-  from { opacity: 1; transform: translateY(0); }
-  to { opacity: 0; transform: translateY(-4px); }
+  from { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+  to { opacity: 0; transform: translate3d(0, -6px, 0) scale(0.99); }
 }
 
 @keyframes emberViewFadeIn {
-  from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; transform: translate3d(0, 8px, 0) scale(1.01); }
+  to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
 }
 
-/* Fast CSS-only fallback for non-ViewTransition environments */
-.view-fade-quick {
-  animation: emberQuickFade 130ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+/* Fluid CSS-only fallback for non-ViewTransition environments */
+.tab-slide-forward {
+  animation: emberTabSlideInRight 260ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.tab-slide-backward {
+  animation: emberTabSlideInLeft 260ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
-@keyframes emberQuickFade {
-  from { opacity: 0.7; transform: translateY(4px); }
-  to { opacity: 1; transform: translateY(0); }
+@keyframes emberTabSlideInRight {
+  from { opacity: 0; transform: translate3d(32px, 0, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
+@keyframes emberTabSlideInLeft {
+  from { opacity: 0; transform: translate3d(-32px, 0, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
+/* Staggered Content Reveal on Tab Switch */
+.tab-anim-cascade > .good-morning-banner,
+.tab-anim-cascade > .search-screen-container,
+.tab-anim-cascade > .profile-screen-container,
+.tab-anim-cascade > .playlist-hero-header {
+  animation: emberSectionCascade 300ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.tab-anim-cascade > .section-title-row {
+  animation: emberSectionCascade 320ms cubic-bezier(0.16, 1, 0.3, 1) 30ms both;
+}
+
+.tab-anim-cascade > .horizontal-card-scroll,
+.tab-anim-cascade > .song-list-container,
+.tab-anim-cascade > #library-custom-playlists,
+.tab-anim-cascade > .library-search-wrap,
+.tab-anim-cascade > .filter-pills-row {
+  animation: emberSectionCascade 340ms cubic-bezier(0.16, 1, 0.3, 1) 50ms both;
+}
+
+@keyframes emberSectionCascade {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 10px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+/* Accessibility: Reduced Motion */
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(ember-main-viewport),
+  ::view-transition-new(ember-main-viewport),
+  .tab-slide-forward,
+  .tab-slide-backward,
+  .tab-anim-cascade > *,
+  .nav-tab-item.active svg,
+  .sidebar-nav-item.active {
+    animation: none !important;
+    transform: none !important;
+    transition: none !important;
+  }
 }
 
 /* ==============================================================================

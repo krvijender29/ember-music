@@ -844,6 +844,7 @@ async function initApp() {
   function triggerViewTransition(statusMessage, actionCallback) {
     const action = typeof statusMessage === 'function' ? statusMessage : actionCallback;
     const token = ++activeTransitionToken;
+    const direction = document.documentElement.dataset.navDirection || 'forward';
 
     // 1. Native View Transitions API (Modern Browsers: Chrome 111+, Edge, Safari 18+)
     if (typeof document.startViewTransition === 'function' && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
@@ -852,6 +853,11 @@ async function initApp() {
           if (typeof action === 'function') {
             action();
           }
+          if (el.viewport) {
+            el.viewport.classList.remove('tab-anim-cascade');
+            void el.viewport.offsetWidth;
+            el.viewport.classList.add('tab-anim-cascade');
+          }
         });
         return vt.finished.catch(() => {});
       } catch (_) {
@@ -859,14 +865,15 @@ async function initApp() {
       }
     }
 
-    // 2. High-Speed Scoped CSS Viewport Fallback
+    // 2. High-Speed Scoped CSS Viewport Fallback with Directional Slide
     if (el.viewport) {
-      el.viewport.classList.remove('view-fade-quick');
+      el.viewport.classList.remove('tab-slide-forward', 'tab-slide-backward', 'tab-anim-cascade');
       void el.viewport.offsetWidth; // Force reflow
-      el.viewport.classList.add('view-fade-quick');
+      const fallbackClass = direction === 'backward' ? 'tab-slide-backward' : 'tab-slide-forward';
+      el.viewport.classList.add(fallbackClass, 'tab-anim-cascade');
       setTimeout(() => {
-        if (el.viewport) el.viewport.classList.remove('view-fade-quick');
-      }, 150);
+        if (el.viewport) el.viewport.classList.remove(fallbackClass, 'tab-anim-cascade');
+      }, 350);
     }
 
     if (typeof action === 'function') {
@@ -2241,6 +2248,8 @@ async function initApp() {
      Screen 7: PLAYLIST & ALBUM VIEW (Personal & YouTube Music Collections)
      ========================================================================== */
   async function openPlaylistView(playlistId, autoPlay = false, catalogMeta = null) {
+    document.documentElement.dataset.navDirection = 'forward';
+    if (el.viewport) el.viewport.dataset.navDirection = 'forward';
     const plName = catalogMeta?.title || 'Playlist';
     await triggerViewTransition(`Loading ${plName}...`, async () => {
       state.previousTab = state.currentTab;
@@ -2607,6 +2616,8 @@ async function initApp() {
   }
 
   function openLikedSongsView() {
+    document.documentElement.dataset.navDirection = 'forward';
+    if (el.viewport) el.viewport.dataset.navDirection = 'forward';
     state.previousTab = state.currentTab;
     state.currentTab = 'liked-songs';
 
@@ -3153,6 +3164,28 @@ async function initApp() {
       return;
     }
     if (state.currentTab === tabName && tabName !== 'playlist' && tabName !== 'liked-songs') return;
+
+    const tabOrder = {
+      'home': 0,
+      'explore': 1,
+      'search': 1,
+      'artists': 2,
+      'albums': 2,
+      'library': 3,
+      'liked-songs': 4,
+      'recently-played': 5,
+      'profile': 5,
+      'playlist': 6
+    };
+
+    const prevIdx = tabOrder[state.currentTab] ?? 0;
+    const nextIdx = tabOrder[tabName] ?? 0;
+    const direction = nextIdx >= prevIdx ? 'forward' : 'backward';
+
+    document.documentElement.dataset.navDirection = direction;
+    if (el.viewport) {
+      el.viewport.dataset.navDirection = direction;
+    }
 
     state.previousTab = state.currentTab;
     state.currentTab = tabName;
