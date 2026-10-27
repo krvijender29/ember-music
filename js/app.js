@@ -289,6 +289,7 @@ async function initApp() {
     const user = AuthManager.getCurrentUser();
     const isLiked = StorageManager.isSongLiked(track.id);
     const isCustomPlaylistView = state.currentTab === 'playlist' && Boolean(state.activePlaylistIsCustom);
+    const durationText = track.duration || (track.durationSec ? formatTime(track.durationSec) : '');
 
     return `
       <div class="ember-song-row ${isPlayingThis ? 'playing' : ''}" data-track-id="${escapeHtml(track.id)}">
@@ -297,6 +298,7 @@ async function initApp() {
           <div class="song-row-title">${escapeHtml(track.title)}</div>
           <div class="song-row-artist">${escapeHtml(track.artist || track.channelTitle || 'Ember Artist')}</div>
         </div>
+        ${durationText ? `<span class="song-row-duration">${escapeHtml(durationText)}</span>` : ''}
         <div class="song-row-actions">
           <button class="btn-row-action btn-row-like ${isLiked ? 'liked' : ''}" data-track-id="${escapeHtml(track.id)}" title="Like" aria-label="Like">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="${isLiked ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
@@ -2217,13 +2219,16 @@ async function initApp() {
       );
       let isAlreadySaved = Boolean(savedMatch);
 
+      const playlistTypeLabel = isCustom ? 'Custom Playlist' : 'Album • Collection';
+      const statsLabel = playlist.stats || `${playlistTracks.length} ${playlistTracks.length === 1 ? 'song' : 'songs'}`;
+
       el.viewport.innerHTML = `
       <!-- Playlist Top Nav Row -->
-      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
+      <div class="playlist-top-nav">
         <button class="header-icon-btn" id="btn-playlist-back" title="Back">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
         </button>
-        <span style="font-size:0.85rem; font-weight:600; color:var(--text-gray); text-transform:uppercase;">Playlist</span>
+        <span class="playlist-nav-pill">Playlist</span>
         <button class="header-icon-btn" id="btn-playlist-options" title="${isCustom ? 'Playlist Options' : 'Options'}">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
         </button>
@@ -2234,38 +2239,40 @@ async function initApp() {
         <div class="playlist-cover-big">
           <img src="${escapeHtml(playlist.cover || 'assets/images/ember_banner.jpg')}" alt="${escapeHtml(playlist.title)}">
         </div>
-        <h2 class="playlist-info-title">${escapeHtml(playlist.title)}</h2>
-        <div class="playlist-info-creator">${escapeHtml(playlist.subtitle || 'Playlist • Ember')}</div>
-
-        <div style="font-size:0.8rem; color:rgba(255,255,255,0.9); margin-bottom:6px;">
-          ${escapeHtml(playlist.description || 'Curated soundscape for your mood.')}
-        </div>
-        <div style="font-size:0.72rem; color:var(--text-dim); margin-bottom:16px;">
-          ${escapeHtml(playlist.stats || `${playlistTracks.length} songs`)}
-        </div>
-
-        <div class="playlist-action-bar">
-          <div class="playlist-action-group-left">
-            <button class="header-icon-btn" id="btn-share-pl" title="Share Playlist">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
-            </button>
-            ${isCustom ? `
-              <button class="header-icon-btn" id="btn-delete-pl" title="Delete Playlist" style="color:#ff5252; transition:opacity 0.2s ease;">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
-              </button>
-            ` : `
-              <button class="btn-save-playlist ${isAlreadySaved ? 'is-saved' : ''}" id="btn-save-pl" title="${isAlreadySaved ? 'Saved in Your Library (Click to remove)' : 'Save Playlist to Library as-is'}">
-                ${isAlreadySaved 
-                  ? `<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg><span>In Library</span>`
-                  : `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg><span>+ Save to Library</span>`
-                }
-              </button>
-            `}
+        <div class="playlist-hero-details">
+          <span class="playlist-type-badge">${playlistTypeLabel}</span>
+          <h1 class="playlist-info-title">${escapeHtml(playlist.title)}</h1>
+          <div class="playlist-info-creator">
+            <span class="playlist-creator-name">${escapeHtml(playlist.subtitle || 'Ember Music')}</span>
+            <span class="playlist-meta-dot">•</span>
+            <span class="playlist-stats-text">${escapeHtml(statsLabel)}</span>
           </div>
 
-          <button class="btn-big-play-playlist" id="btn-play-all-playlist" title="Play All">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4"/></svg>
-          </button>
+          ${playlist.description ? `<p class="playlist-info-description">${escapeHtml(playlist.description)}</p>` : ''}
+
+          <div class="playlist-action-bar">
+            <div class="playlist-action-group-left">
+              ${isCustom ? `
+                <button class="btn-playlist-tool-icon" id="btn-delete-pl" title="Delete Playlist" style="color:#ff5252;">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+                </button>
+              ` : `
+                <button class="btn-save-playlist ${isAlreadySaved ? 'is-saved' : ''}" id="btn-save-pl" title="${isAlreadySaved ? 'Saved in Your Library (Click to remove)' : 'Save Playlist to Library as-is'}">
+                  ${isAlreadySaved 
+                    ? `<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg><span>In Library</span>`
+                    : `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg><span>+ Save to Library</span>`
+                  }
+                </button>
+              `}
+              <button class="btn-playlist-tool-icon" id="btn-share-pl" title="Share Playlist">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+              </button>
+            </div>
+
+            <button class="btn-big-play-playlist" id="btn-play-all-playlist" title="Play All">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4"/></svg>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -2447,30 +2454,35 @@ async function initApp() {
 
       el.viewport.innerHTML = `
         <!-- Top Nav -->
-        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
+        <div class="playlist-top-nav">
           <button class="header-icon-btn" id="btn-liked-back" title="Back">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
           </button>
-          <span style="font-size:0.85rem; font-weight:600; color:var(--text-gray); text-transform:uppercase;">Collection</span>
+          <span class="playlist-nav-pill">Collection</span>
           <div style="width:36px;"></div>
         </div>
 
         <!-- Hero Banner -->
         <div class="playlist-hero-header">
-          <div class="playlist-cover-big" style="background:linear-gradient(135deg, #2b2b48 0%, #0c0c14 100%); display:flex; align-items:center; justify-content:center; border:1px solid var(--border-card);">
+          <div class="playlist-cover-big playlist-cover-liked">
             <svg width="60" height="60" viewBox="0 0 24 24" fill="#ffffff"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
           </div>
-          <h2 class="playlist-info-title">Liked Songs</h2>
-          <div class="playlist-info-creator">${user ? escapeHtml(user.displayName) : 'Guest Collection'}</div>
-          <div style="font-size:0.75rem; color:var(--text-dim); margin-bottom:16px;">
-            ${likedTracks.length} ${likedTracks.length === 1 ? 'song' : 'songs'} saved
-          </div>
+          <div class="playlist-hero-details">
+            <span class="playlist-type-badge">Personal Collection</span>
+            <h1 class="playlist-info-title">Liked Songs</h1>
+            <div class="playlist-info-creator">
+              <span class="playlist-creator-name">${user ? escapeHtml(user.displayName) : 'Guest Collection'}</span>
+              <span class="playlist-meta-dot">•</span>
+              <span class="playlist-stats-text">${likedTracks.length} ${likedTracks.length === 1 ? 'song' : 'songs'} saved</span>
+            </div>
+            <p class="playlist-info-description">All the tracks you love, gathered in one place.</p>
 
-          <div class="playlist-action-bar">
-            <div></div>
-            <button class="btn-big-play-playlist" id="btn-play-all-liked" title="Play All Liked">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4"/></svg>
-            </button>
+            <div class="playlist-action-bar">
+              <div class="playlist-action-group-left"></div>
+              <button class="btn-big-play-playlist" id="btn-play-all-liked" title="Play All Liked">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4"/></svg>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -3008,6 +3020,7 @@ async function initApp() {
   }
   window.switchTab = switchTab;
   window.openPlaylistView = openPlaylistView;
+  window.openLikedSongsView = openLikedSongsView;
   window.renderLibraryView = renderLibraryView;
 
   // Bind Bottom Nav Tabs
