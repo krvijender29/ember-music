@@ -301,6 +301,12 @@
       <!-- Ambient Blurred Backdrop for Now Playing Sheet (Fixed & Independent of Scrolling) -->
       <div class="sheet-ambient-backdrop" aria-hidden="true">
         <div class="sheet-ambient-layer" id="sheet-ambient-layer"></div>
+        <!-- Dynamic Fluid Animated Mesh Orbs (Apple Music Style) -->
+        <div class="sheet-ambient-mesh" id="sheet-ambient-mesh">
+          <div class="mesh-orb orb-primary"></div>
+          <div class="mesh-orb orb-secondary"></div>
+          <div class="mesh-orb orb-accent"></div>
+        </div>
         <div class="sheet-ambient-overlay"></div>
       </div>
 
@@ -327,8 +333,25 @@
           <div class="sheet-content-wrapper">
             <!-- Left Column: Album Artwork & Live Synced Lyrics -->
             <div class="sheet-artwork-column" id="sheet-artwork-column">
-              <div class="sheet-artwork-container" id="sheet-artwork-container">
+              <div class="sheet-artwork-container" id="sheet-artwork-container" data-art-mode="cover">
+                <!-- Standard Cover Artwork -->
                 <img src="assets/images/ember_banner.jpg" alt="Album Cover" id="sheet-artwork" class="sheet-artwork-img">
+
+                <!-- 3D Turntable Spinning Vinyl Disc -->
+                <div class="sheet-vinyl-disc" id="sheet-vinyl-disc" aria-hidden="true">
+                  <div class="vinyl-groove-rings"></div>
+                  <div class="vinyl-sheen-layer"></div>
+                  <div class="vinyl-center-label">
+                    <img src="assets/images/ember_banner.jpg" alt="Vinyl Label" id="sheet-vinyl-label" class="sheet-vinyl-label-img">
+                    <div class="vinyl-spindle-hole"></div>
+                  </div>
+                </div>
+
+                <!-- Vinyl / Cover Mode Switcher Pill -->
+                <button class="btn-art-mode-toggle" id="btn-art-mode-toggle" title="Switch Vinyl / Cover view" aria-label="Toggle Vinyl Mode">
+                  <svg class="mode-icon-disc" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>
+                  <span id="art-mode-label">Vinyl Mode</span>
+                </button>
               </div>
 
               <!-- Time-Synced Karaoke Lyrics View -->

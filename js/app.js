@@ -284,6 +284,22 @@ async function initApp() {
       .trim();
   }
 
+  /* ==============================================================================
+     Haptic Feedback Engine (Mobile & Touch Devices)
+     ============================================================================== */
+  function triggerHaptic(type = 'light') {
+    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+      try {
+        if (type === 'light') navigator.vibrate(12);
+        else if (type === 'medium') navigator.vibrate(24);
+        else if (type === 'heavy') navigator.vibrate(45);
+        else if (type === 'double') navigator.vibrate([14, 38, 14]);
+        else if (type === 'success') navigator.vibrate([16, 50, 24]);
+      } catch (_) {}
+    }
+  }
+  window.triggerHaptic = triggerHaptic;
+
   function createSongRowHtml(track, index = 0) {
     const isPlayingThis = player.currentTrack && player.currentTrack.id === track.id;
     const user = AuthManager.getCurrentUser();
@@ -293,7 +309,14 @@ async function initApp() {
 
     return `
       <div class="ember-song-row ${isPlayingThis ? 'playing' : ''}" data-track-id="${escapeHtml(track.id)}">
-        <img class="song-row-thumb" src="${escapeHtml(track.thumbnail || 'assets/images/ember_banner.jpg')}" alt="${escapeHtml(track.title)}" loading="lazy">
+        <div class="song-row-thumb-wrap">
+          <img class="song-row-thumb" src="${escapeHtml(track.thumbnail || 'assets/images/ember_banner.jpg')}" alt="${escapeHtml(track.title)}" loading="lazy">
+          <div class="row-equalizer-badge" aria-hidden="true">
+            <span class="eq-bar bar-1"></span>
+            <span class="eq-bar bar-2"></span>
+            <span class="eq-bar bar-3"></span>
+          </div>
+        </div>
         <div class="song-row-meta">
           <div class="song-row-title">${escapeHtml(track.title)}</div>
           <div class="song-row-artist">${escapeHtml(track.artist || track.channelTitle || 'Ember Artist')}</div>
@@ -819,6 +842,23 @@ async function initApp() {
   async function triggerViewTransition(statusMessage, actionCallback) {
     const action = typeof statusMessage === 'function' ? statusMessage : actionCallback;
     const token = ++activeTransitionToken;
+
+    // 1. Native View Transitions API (Modern Browsers: Chrome 111+, Edge, Safari 18+)
+    if (typeof document.startViewTransition === 'function' && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      try {
+        const vt = document.startViewTransition(async () => {
+          if (typeof action === 'function') {
+            await action();
+          }
+        });
+        await vt.finished;
+        return;
+      } catch (_) {
+        // Fall back gracefully if transition was skipped or aborted
+      }
+    }
+
+    // 2. High-Fidelity CSS & Loader Fallback
     if (viewLoader) {
       if (viewLoaderStatus && typeof statusMessage === 'string') {
         viewLoaderStatus.textContent = statusMessage;
@@ -3026,6 +3066,7 @@ async function initApp() {
   // Bind Bottom Nav Tabs
   el.navTabs.forEach(tab => {
     tab.addEventListener('click', () => {
+      triggerHaptic('light');
       const target = tab.dataset.tab;
       switchTab(target);
     });
@@ -3051,7 +3092,7 @@ async function initApp() {
     });
   }
 
-  /* Dynamic Ambient Artwork Backdrop & Vibrant Mesh Palette Extraction */
+  /* Dynamic Ambient Artwork Backdrop & Vibrant 3-Color Mesh Palette Extraction */
   function extractPaletteFromImage(imgUrl, callback) {
     if (!imgUrl) return;
     const img = new Image();
@@ -3059,57 +3100,83 @@ async function initApp() {
     img.onload = () => {
       try {
         const canvas = document.createElement('canvas');
-        canvas.width = 16;
-        canvas.height = 16;
+        canvas.width = 24;
+        canvas.height = 24;
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
-        ctx.drawImage(img, 0, 0, 16, 16);
-        const data = ctx.getImageData(0, 0, 16, 16).data;
+        ctx.drawImage(img, 0, 0, 24, 24);
+        const data = ctx.getImageData(0, 0, 24, 24).data;
 
-        let maxScore = -1;
+        let maxVibrantScore = -1;
         let vibrantRgb = [255, 90, 54];
+        let maxDeepScore = -1;
+        let deepRgb = [138, 43, 226];
+        let maxAccentScore = -1;
+        let accentRgb = [0, 229, 255];
+
         let rSum = 0, gSum = 0, bSum = 0, validPixels = 0;
 
         for (let i = 0; i < data.length; i += 4) {
           const r = data[i], g = data[i + 1], b = data[i + 2], a = data[i + 3];
           if (a < 128) continue;
           const brightness = (r * 299 + g * 587 + b * 114) / 1000;
-          if (brightness < 25 || brightness > 235) continue;
+          if (brightness < 20 || brightness > 240) continue;
 
           const maxC = Math.max(r, g, b);
           const minC = Math.min(r, g, b);
           const sat = (maxC - minC) / (maxC || 1);
-          const score = sat * (brightness / 255);
 
-          if (score > maxScore) {
-            maxScore = score;
+          rSum += r; gSum += g; bSum += b; validPixels++;
+
+          // 1. Primary Vibrant Score (High saturation & warmth)
+          const vibrantScore = sat * 1.5 + (brightness / 255);
+          if (vibrantScore > maxVibrantScore) {
+            maxVibrantScore = vibrantScore;
             vibrantRgb = [r, g, b];
           }
-          rSum += r;
-          gSum += g;
-          bSum += b;
-          validPixels++;
+
+          // 2. Deep/Harmonic Mood Score (Rich darker hues)
+          if (brightness < 165) {
+            const deepScore = sat * 1.2 + ((165 - brightness) / 165);
+            if (deepScore > maxDeepScore) {
+              maxDeepScore = deepScore;
+              deepRgb = [r, g, b];
+            }
+          }
+
+          // 3. Accent Contrast Score
+          const dist = Math.abs(r - vibrantRgb[0]) + Math.abs(g - vibrantRgb[1]) + Math.abs(b - vibrantRgb[2]);
+          const accentScore = sat * 1.3 + (dist / 380);
+          if (accentScore > maxAccentScore && dist > 75) {
+            maxAccentScore = accentScore;
+            accentRgb = [r, g, b];
+          }
         }
 
-        let secondaryRgb = [138, 43, 226];
-        if (validPixels > 0) {
-          const avgR = Math.round(rSum / validPixels);
-          const avgG = Math.round(gSum / validPixels);
-          const avgB = Math.round(bSum / validPixels);
-          secondaryRgb = [
-            Math.min(255, Math.max(0, Math.round(vibrantRgb[0] * 0.6 + avgR * 0.4))),
-            Math.min(255, Math.max(0, Math.round(vibrantRgb[1] * 0.4 + avgG * 0.6))),
-            Math.min(255, Math.max(0, Math.round(vibrantRgb[2] * 0.7 + avgB * 0.3 + 30)))
+        // Harmonize colors if too close or undifferentiated
+        if (maxDeepScore < 0 || (Math.abs(deepRgb[0] - vibrantRgb[0]) < 30 && Math.abs(deepRgb[1] - vibrantRgb[1]) < 30)) {
+          deepRgb = [
+            Math.max(20, Math.min(220, Math.round(vibrantRgb[2] * 0.9 + 25))),
+            Math.max(20, Math.min(220, Math.round(vibrantRgb[0] * 0.35 + 10))),
+            Math.max(40, Math.min(255, Math.round(vibrantRgb[1] * 0.75 + 50)))
           ];
         }
 
-        callback(vibrantRgb, secondaryRgb);
+        if (maxAccentScore < 0 || (Math.abs(accentRgb[0] - vibrantRgb[0]) < 35 && Math.abs(accentRgb[1] - vibrantRgb[1]) < 35)) {
+          accentRgb = [
+            Math.max(30, Math.min(255, Math.round(255 - vibrantRgb[0] * 0.5))),
+            Math.max(30, Math.min(255, Math.round(vibrantRgb[2] * 0.8 + 35))),
+            Math.max(50, Math.min(255, Math.round(vibrantRgb[0] * 0.7 + 55)))
+          ];
+        }
+
+        callback(vibrantRgb, deepRgb, accentRgb);
       } catch (_) {
-        callback([255, 90, 54], [138, 43, 226]);
+        callback([255, 90, 54], [138, 43, 226], [0, 229, 255]);
       }
     };
     img.onerror = () => {
-      callback([255, 90, 54], [138, 43, 226]);
+      callback([255, 90, 54], [138, 43, 226], [0, 229, 255]);
     };
     img.src = imgUrl;
   }
@@ -3125,16 +3192,27 @@ async function initApp() {
     if (sheetAmbient) {
       sheetAmbient.style.backgroundImage = bgUrl;
     }
+    const sheetVinylLabel = document.getElementById('sheet-vinyl-label');
+    if (sheetVinylLabel) {
+      sheetVinylLabel.src = imgUrl;
+    }
 
-    extractPaletteFromImage(imgUrl, (primary, secondary) => {
-      document.documentElement.style.setProperty('--ambient-rgb-1', `${primary[0]}, ${primary[1]}, ${primary[2]}`);
-      document.documentElement.style.setProperty('--ambient-rgb-2', `${secondary[0]}, ${secondary[1]}, ${secondary[2]}`);
-      document.documentElement.style.setProperty('--ambient-glow-1', `rgb(${primary[0]}, ${primary[1]}, ${primary[2]})`);
-      document.documentElement.style.setProperty('--ambient-glow-2', `rgb(${secondary[0]}, ${secondary[1]}, ${secondary[2]})`);
+    extractPaletteFromImage(imgUrl, (primary, secondary, accent) => {
+      const pStr = `${primary[0]}, ${primary[1]}, ${primary[2]}`;
+      const sStr = `${secondary[0]}, ${secondary[1]}, ${secondary[2]}`;
+      const aStr = `${accent[0]}, ${accent[1]}, ${accent[2]}`;
+
+      document.documentElement.style.setProperty('--ambient-rgb-1', pStr);
+      document.documentElement.style.setProperty('--ambient-rgb-2', sStr);
+      document.documentElement.style.setProperty('--ambient-rgb-3', aStr);
+
+      document.documentElement.style.setProperty('--ambient-glow-1', `rgb(${pStr})`);
+      document.documentElement.style.setProperty('--ambient-glow-2', `rgb(${sStr})`);
+      document.documentElement.style.setProperty('--ambient-glow-3', `rgb(${aStr})`);
     });
   }
 
-  /* ==========================================================================
+  /* ==============================================================================
      Player Callbacks & Engine Sync
      ========================================================================== */
   player.onTrackChange = (track) => {
@@ -3146,7 +3224,7 @@ async function initApp() {
       return;
     }
 
-    // Dynamic Ambient Backdrop Blur
+    // Dynamic Ambient Backdrop Blur & 3-Color Fluid Mesh
     updateAmbientBackground(track.thumbnail);
 
     // Mini Player
@@ -3154,10 +3232,12 @@ async function initApp() {
     el.miniArtist.textContent = track.artist || track.channelTitle || 'Ember';
     el.miniThumb.src = track.thumbnail || 'assets/images/ember_banner.jpg';
 
-    // Fullscreen Sheet
+    // Fullscreen Sheet & Vinyl Label
     el.sheetTitle.textContent = track.title;
     el.sheetArtist.textContent = track.artist || track.channelTitle || 'Ember';
     el.sheetArtwork.src = track.thumbnail || 'assets/images/ember_banner.jpg';
+    const vinylLabel = document.getElementById('sheet-vinyl-label');
+    if (vinylLabel) vinylLabel.src = track.thumbnail || 'assets/images/ember_banner.jpg';
 
     // Synchronize Lyrics if Lyrics view is open
     if (state.isLyricsOpen) {
@@ -3184,6 +3264,11 @@ async function initApp() {
   };
 
   player.onStateChange = ({ isPlaying }) => {
+    // Synchronize global playing state for ambient mesh orbs & spinning vinyl
+    document.body.classList.toggle('is-playing', isPlaying);
+    const sheet = document.getElementById('now-playing-sheet');
+    if (sheet) sheet.classList.toggle('is-playing', isPlaying);
+
     if (el.miniPlayIcon && el.miniPauseIcon) {
       el.miniPlayIcon.style.display = isPlaying ? 'none' : 'block';
       el.miniPauseIcon.style.display = isPlaying ? 'block' : 'none';
@@ -3236,16 +3321,19 @@ async function initApp() {
   // Mini Player Controls
   el.miniPlayPauseBtn.addEventListener('click', (e) => {
     e.stopPropagation();
+    triggerHaptic('medium');
     player.togglePlay();
   });
 
   el.miniNextBtn.addEventListener('click', (e) => {
     e.stopPropagation();
+    triggerHaptic('light');
     player.next();
   });
 
   async function toggleCurrentTrackLike() {
     if (player.currentTrack) {
+      triggerHaptic('double');
       const user = AuthManager.getCurrentUser();
       const isLiked = await DbManager.toggleLikeSong(user?.uid, player.currentTrack);
       updateLikeIcons(isLiked);
@@ -3624,11 +3712,21 @@ async function initApp() {
   });
 
   // Sheet Controls
-  el.sheetPlayPauseBtn.addEventListener('click', () => player.togglePlay());
-  el.sheetNextBtn.addEventListener('click', () => player.next());
-  el.sheetPrevBtn.addEventListener('click', () => player.previous(true));
+  el.sheetPlayPauseBtn.addEventListener('click', () => {
+    triggerHaptic('medium');
+    player.togglePlay();
+  });
+  el.sheetNextBtn.addEventListener('click', () => {
+    triggerHaptic('light');
+    player.next();
+  });
+  el.sheetPrevBtn.addEventListener('click', () => {
+    triggerHaptic('light');
+    player.previous(true);
+  });
 
   el.sheetShuffleBtn.addEventListener('click', () => {
+    triggerHaptic('light');
     const isShuffle = player.toggleShuffle();
     el.sheetShuffleBtn.classList.toggle('active', isShuffle);
     if (el.desktopShuffleBtn) el.desktopShuffleBtn.classList.toggle('active', isShuffle);
@@ -3636,6 +3734,7 @@ async function initApp() {
   });
 
   el.sheetRepeatBtn.addEventListener('click', () => {
+    triggerHaptic('light');
     const mode = player.toggleRepeat();
     const isActive = mode !== 'off';
     el.sheetRepeatBtn.classList.toggle('active', isActive);
@@ -3644,6 +3743,7 @@ async function initApp() {
   });
 
   el.sheetLikeBtn.addEventListener('click', async () => {
+    triggerHaptic('double');
     if (player.currentTrack) {
       const user = AuthManager.getCurrentUser();
       const isLiked = await DbManager.toggleLikeSong(user?.uid, player.currentTrack);
@@ -3651,6 +3751,50 @@ async function initApp() {
       showToast(isLiked ? 'Added to Liked Songs' : 'Removed from Liked Songs', 'success');
     }
   });
+
+  // 3D Spinning Vinyl Turntable Mode Controller
+  const sheetArtContainer = document.getElementById('sheet-artwork-container');
+  const btnArtModeToggle = document.getElementById('btn-art-mode-toggle');
+  const artModeLabel = document.getElementById('art-mode-label');
+
+  let activeArtMode = 'cover';
+  try {
+    activeArtMode = localStorage.getItem('ember_art_mode') || 'cover';
+  } catch (_) {}
+
+  function setArtMode(mode) {
+    activeArtMode = mode;
+    if (sheetArtContainer) {
+      sheetArtContainer.setAttribute('data-art-mode', mode);
+    }
+    if (artModeLabel) {
+      artModeLabel.textContent = (mode === 'vinyl') ? 'Cover Art' : 'Vinyl Mode';
+    }
+    try {
+      localStorage.setItem('ember_art_mode', mode);
+    } catch (_) {}
+  }
+  window.setArtMode = setArtMode;
+
+  if (btnArtModeToggle) {
+    btnArtModeToggle.addEventListener('click', (e) => {
+      e.stopPropagation();
+      triggerHaptic('medium');
+      const nextMode = (activeArtMode === 'vinyl') ? 'cover' : 'vinyl';
+      setArtMode(nextMode);
+    });
+  }
+
+  if (sheetArtContainer) {
+    sheetArtContainer.addEventListener('click', (e) => {
+      if (e.target.closest('#btn-art-mode-toggle')) return;
+      triggerHaptic('light');
+      const nextMode = (activeArtMode === 'vinyl') ? 'cover' : 'vinyl';
+      setArtMode(nextMode);
+    });
+  }
+
+  setArtMode(activeArtMode);
 
   // Song Options Modal (3-Dot Button in Fullscreen Player & Song Rows)
   const songOptionsModal = document.getElementById('song-options-modal');
@@ -3903,24 +4047,28 @@ async function initApp() {
   if (el.desktopPlayPauseBtn) {
     el.desktopPlayPauseBtn.addEventListener('click', (e) => {
       e.stopPropagation();
+      triggerHaptic('medium');
       player.togglePlay();
     });
   }
   if (el.desktopNextBtn) {
     el.desktopNextBtn.addEventListener('click', (e) => {
       e.stopPropagation();
+      triggerHaptic('light');
       player.next();
     });
   }
   if (el.desktopPrevBtn) {
     el.desktopPrevBtn.addEventListener('click', (e) => {
       e.stopPropagation();
+      triggerHaptic('light');
       player.previous(true);
     });
   }
   if (el.desktopShuffleBtn) {
     el.desktopShuffleBtn.addEventListener('click', (e) => {
       e.stopPropagation();
+      triggerHaptic('light');
       const isShuffle = player.toggleShuffle();
       el.desktopShuffleBtn.classList.toggle('active', isShuffle);
       if (el.sheetShuffleBtn) el.sheetShuffleBtn.classList.toggle('active', isShuffle);
@@ -3930,6 +4078,7 @@ async function initApp() {
   if (el.desktopRepeatBtn) {
     el.desktopRepeatBtn.addEventListener('click', (e) => {
       e.stopPropagation();
+      triggerHaptic('light');
       const mode = player.toggleRepeat();
       const isActive = mode !== 'off';
       el.desktopRepeatBtn.classList.toggle('active', isActive);
@@ -3940,6 +4089,7 @@ async function initApp() {
   if (el.desktopLikeBtn) {
     el.desktopLikeBtn.addEventListener('click', async (e) => {
       e.stopPropagation();
+      triggerHaptic('double');
       if (player.currentTrack) {
         const user = AuthManager.getCurrentUser();
         const isLiked = await DbManager.toggleLikeSong(user?.uid, player.currentTrack);
