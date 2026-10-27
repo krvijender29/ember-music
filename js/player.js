@@ -10,6 +10,7 @@
 class MusicPlayer {
   constructor() {
     this.audio = document.getElementById('ember-audio-player') || new Audio();
+    this.audio.crossOrigin = 'anonymous';
     this.audio.preload = 'auto';
 
     // Engine state
@@ -135,7 +136,8 @@ class MusicPlayer {
     if (event.data === 1) { // Playing
       this.isPlaying = true;
 
-    // Resume AudioContext for Equalizer if suspended
+    // Initialize or resume AudioContext for Equalizer on user gesture
+    this.initAudioContext();
     if (this.audioCtx && this.audioCtx.state === 'suspended') {
       try { this.audioCtx.resume(); } catch (_) {}
     }
@@ -227,7 +229,8 @@ class MusicPlayer {
       if (this.activeEngine === 'audio') {
         this.isPlaying = true;
 
-    // Resume AudioContext for Equalizer if suspended
+    // Initialize or resume AudioContext for Equalizer on user gesture
+    this.initAudioContext();
     if (this.audioCtx && this.audioCtx.state === 'suspended') {
       try { this.audioCtx.resume(); } catch (_) {}
     }
@@ -239,7 +242,8 @@ class MusicPlayer {
       if (this.activeEngine === 'audio') {
         this.isPlaying = true;
 
-    // Resume AudioContext for Equalizer if suspended
+    // Initialize or resume AudioContext for Equalizer on user gesture
+    this.initAudioContext();
     if (this.audioCtx && this.audioCtx.state === 'suspended') {
       try { this.audioCtx.resume(); } catch (_) {}
     }
@@ -360,6 +364,7 @@ class MusicPlayer {
     if (!track.audioUrl && track.title) {
       if (track.previewUrl && this.audio) {
         this.activeEngine = 'audio';
+        this.audio.crossOrigin = 'anonymous';
         this.audio.src = track.previewUrl;
         if (autoPlay) this.play();
       }
@@ -377,6 +382,7 @@ class MusicPlayer {
               const curTime = this.audio ? (this.audio.currentTime || 0) : 0;
               this.activeEngine = 'audio';
               if (this.audio) {
+                this.audio.crossOrigin = 'anonymous';
                 this.audio.src = track.audioUrl;
                 this.audio.currentTime = curTime;
                 if (this.isPlaying) this.play();
@@ -397,8 +403,11 @@ class MusicPlayer {
       }
       this.stopYtTicker();
 
-      if (this.audio.src !== track.audioUrl) {
-        this.audio.src = track.audioUrl;
+      if (this.audio) {
+        this.audio.crossOrigin = 'anonymous';
+        if (this.audio.src !== track.audioUrl) {
+          this.audio.src = track.audioUrl;
+        }
       }
       if (autoPlay) {
         this.play();
@@ -419,7 +428,8 @@ class MusicPlayer {
             this.ytPlayer.loadVideoById(track.id);
             this.isPlaying = true;
 
-    // Resume AudioContext for Equalizer if suspended
+    // Initialize or resume AudioContext for Equalizer on user gesture
+    this.initAudioContext();
     if (this.audioCtx && this.audioCtx.state === 'suspended') {
       try { this.audioCtx.resume(); } catch (_) {}
     }
@@ -450,7 +460,8 @@ class MusicPlayer {
 
     this.isPlaying = true;
 
-    // Resume AudioContext for Equalizer if suspended
+    // Initialize or resume AudioContext for Equalizer on user gesture
+    this.initAudioContext();
     if (this.audioCtx && this.audioCtx.state === 'suspended') {
       try { this.audioCtx.resume(); } catch (_) {}
     }
@@ -943,6 +954,9 @@ class MusicPlayer {
     this.eqPreset = 'Custom';
 
     this.initAudioContext();
+    if (this.audioCtx && this.audioCtx.state === 'suspended') {
+      try { this.audioCtx.resume(); } catch (_) {}
+    }
     if (this.eqFilters[index] && this.audioCtx) {
       const targetGain = this.eqEnabled ? clampedGain : 0;
       try {
@@ -967,6 +981,9 @@ class MusicPlayer {
     this.eqBands = [...this.eqPresets[presetName]];
 
     this.initAudioContext();
+    if (this.audioCtx && this.audioCtx.state === 'suspended') {
+      try { this.audioCtx.resume(); } catch (_) {}
+    }
     this.eqFilters.forEach((filter, idx) => {
       if (filter && this.audioCtx) {
         const targetGain = this.eqEnabled ? this.eqBands[idx] : 0;
@@ -990,6 +1007,9 @@ class MusicPlayer {
   setEqEnabled(enabled) {
     this.eqEnabled = !!enabled;
     this.initAudioContext();
+    if (this.audioCtx && this.audioCtx.state === 'suspended') {
+      try { this.audioCtx.resume(); } catch (_) {}
+    }
     this.eqFilters.forEach((filter, idx) => {
       if (filter && this.audioCtx) {
         const targetGain = this.eqEnabled ? this.eqBands[idx] : 0;

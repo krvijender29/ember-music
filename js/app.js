@@ -4764,6 +4764,12 @@ async function initApp() {
 
   function openEqualizerModal() {
     if (!el.equalizerModal) return;
+    if (player && typeof player.initAudioContext === 'function') {
+      player.initAudioContext();
+      if (player.audioCtx && player.audioCtx.state === 'suspended') {
+        try { player.audioCtx.resume(); } catch (_) {}
+      }
+    }
     syncEqualizerUI();
     el.equalizerModal.style.display = 'flex';
   }
