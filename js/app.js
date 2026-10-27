@@ -468,6 +468,8 @@ async function initApp() {
         if (targetTrack) {
           const user = AuthManager.getCurrentUser();
           const isLikedNow = await DbManager.toggleLikeSong(user?.uid, targetTrack);
+          invalidateLibraryCache();
+          invalidateProfileCache();
           btn.classList.toggle('liked', isLikedNow);
           const svg = btn.querySelector('svg');
           if (svg) svg.setAttribute('fill', isLikedNow ? 'currentColor' : 'none');
@@ -833,99 +835,101 @@ async function initApp() {
   }
 
   /* ==========================================================================
-     View Transition Loading Screen Controller
+     View Transition Loading Screen Controller & SWR Navigation
      ========================================================================== */
   const viewLoader = document.getElementById('ember-view-loader');
   const viewLoaderStatus = document.getElementById('view-loader-status');
   let activeTransitionToken = 0;
 
-  async function triggerViewTransition(statusMessage, actionCallback) {
+  function triggerViewTransition(statusMessage, actionCallback) {
     const action = typeof statusMessage === 'function' ? statusMessage : actionCallback;
     const token = ++activeTransitionToken;
 
     // 1. Native View Transitions API (Modern Browsers: Chrome 111+, Edge, Safari 18+)
     if (typeof document.startViewTransition === 'function' && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
       try {
-        const vt = document.startViewTransition(async () => {
+        const vt = document.startViewTransition(() => {
           if (typeof action === 'function') {
-            await action();
+            action();
           }
         });
-        await vt.finished;
-        return;
+        return vt.finished.catch(() => {});
       } catch (_) {
         // Fall back gracefully if transition was skipped or aborted
       }
     }
 
-    // 2. High-Fidelity CSS & Loader Fallback
-    if (viewLoader) {
-      if (viewLoaderStatus && typeof statusMessage === 'string') {
-        viewLoaderStatus.textContent = statusMessage;
-      }
-      viewLoader.style.display = 'flex';
-      void viewLoader.offsetHeight; // Force reflow
-      viewLoader.classList.add('active');
-    }
+    // 2. High-Speed Scoped CSS Viewport Fallback
     if (el.viewport) {
-      el.viewport.classList.add('view-transitioning');
-    }
-
-    const minDuration = 280; // minimum duration so animation is visibly smooth
-    const startTime = performance.now();
-
-    try {
-      if (typeof action === 'function') {
-        await action();
-      }
-    } catch (err) {
-      console.warn('[Ember] View transition error:', err);
-    } finally {
-      const elapsed = performance.now() - startTime;
-      const remaining = Math.max(0, minDuration - elapsed);
-
+      el.viewport.classList.remove('view-fade-quick');
+      void el.viewport.offsetWidth; // Force reflow
+      el.viewport.classList.add('view-fade-quick');
       setTimeout(() => {
-        if (token !== activeTransitionToken) return;
-
-        if (viewLoader) {
-          viewLoader.classList.remove('active');
-        }
-        if (el.viewport) {
-          el.viewport.classList.remove('view-transitioning');
-        }
-        setTimeout(() => {
-          if (token !== activeTransitionToken) return;
-          if (viewLoader && !viewLoader.classList.contains('active')) {
-            viewLoader.style.display = 'none';
-          }
-        }, 250);
-      }, remaining);
+        if (el.viewport) el.viewport.classList.remove('view-fade-quick');
+      }, 150);
     }
+
+    if (typeof action === 'function') {
+      try {
+        const res = action();
+        // If the action returned a slow Promise (e.g. remote YouTube API fetch), show debounced loader
+        if (res && typeof res.then === 'function') {
+          let loaderShown = false;
+          const timer = setTimeout(() => {
+            if (token !== activeTransitionToken) return;
+            if (viewLoader) {
+              if (viewLoaderStatus && typeof statusMessage === 'string') {
+                viewLoaderStatus.textContent = statusMessage;
+              }
+              viewLoader.style.display = 'flex';
+              void viewLoader.offsetHeight;
+              viewLoader.classList.add('active');
+              loaderShown = true;
+            }
+          }, 120);
+
+          return res.finally(() => {
+            clearTimeout(timer);
+            if (loaderShown && viewLoader) {
+              viewLoader.classList.remove('active');
+              setTimeout(() => {
+                if (token !== activeTransitionToken) return;
+                if (viewLoader && !viewLoader.classList.contains('active')) {
+                  viewLoader.style.display = 'none';
+                }
+              }, 120);
+            }
+          });
+        }
+      } catch (err) {
+        console.warn('[Ember] View transition error:', err);
+      }
+    }
+    return Promise.resolve();
   }
   window.triggerViewTransition = triggerViewTransition;
+
+  // Global In-Memory Caches for Instant SWR Navigation
+  let cachedHomeData = null;
+  let homeFetchInProgress = false;
+  let cachedLibraryData = null;
+  let libraryFetchInProgress = false;
+  let cachedProfileData = null;
+  let profileFetchInProgress = false;
+
+  function invalidateHomeCache() { cachedHomeData = null; }
+  function invalidateLibraryCache() { cachedLibraryData = null; }
+  function invalidateProfileCache() { cachedProfileData = null; }
+  window.invalidateHomeCache = invalidateHomeCache;
+  window.invalidateLibraryCache = invalidateLibraryCache;
+  window.invalidateProfileCache = invalidateProfileCache;
 
   /* ==========================================================================
      Screen 5: HOME VIEW (Personalized History & Artist-Driven Recommendations)
      ========================================================================== */
-  async function renderHomeView() {
-    state.currentTab = 'home';
-    if (typeof updateSidebarActiveUI === 'function') updateSidebarActiveUI('home');
-    if (typeof updateHeaderSearchUI === 'function') updateHeaderSearchUI('home');
-    const user = AuthManager.getCurrentUser();
-
-    // 1. Concurrently load user listening history, preferences, recommendations, and live global charts
-    const [recentHistory, prefs, recommendedTracks, globalCharts] = await Promise.all([
-      DbManager.getListeningHistory(user?.uid, 14).catch(() => []),
-      DbManager.getPreferences(user?.uid).catch(() => null),
-      DbManager.getRecommendations(user?.uid, DEFAULT_TRACKS).catch(() => DEFAULT_TRACKS),
-      fetch('/api/charts?country=us&limit=20').then(r => r.json()).catch(() => ({ results: [] }))
-    ]);
-
-    // Safety guard if user navigated away during load
-    if (state.currentTab !== 'home') return;
-
+  function drawHomeViewContent(recentHistory, prefs, recommendedTracks, globalCharts, user, isUpdate = false) {
     const localRecent = StorageManager.getRecentTracks();
-    const rawHistory = [...recentHistory, ...localRecent];
+    const rawHistory = [...(recentHistory || []), ...localRecent];
     const combinedHistory = [];
     const seenSongKeys = new Set();
 
@@ -950,7 +954,8 @@ async function initApp() {
     }
 
     const hasHistory = combinedHistory.length > 0;
-    const displayHistoryCards = hasHistory ? combinedHistory.slice(0, 10) : DEFAULT_TRACKS.slice(0, 8);
+    const fallbackList = (recommendedTracks && Array.isArray(recommendedTracks) && recommendedTracks.length > 0) ? recommendedTracks : DEFAULT_TRACKS;
+    const displayHistoryCards = hasHistory ? combinedHistory.slice(0, 10) : fallbackList.slice(0, 8);
 
     // 2. Extract Top Listened Artist from History & Preferences
     const favArtists = (prefs?.favorite_artists || []).map(a => cleanArtistName(a)).filter(Boolean);
@@ -991,6 +996,8 @@ async function initApp() {
     const hour = new Date().getHours();
     const greeting = hour < 12 ? 'Good Morning' : (hour < 18 ? 'Good Afternoon' : 'Good Evening');
     const userName = user?.displayName ? `, ${user.displayName.split(' ')[0]}` : '';
+
+    const savedScroll = isUpdate && el.viewport ? el.viewport.scrollTop : 0;
 
     el.viewport.innerHTML = `
       <!-- Home Search Box (Mobile) -->
@@ -1108,7 +1115,7 @@ async function initApp() {
         <span class="section-see-all" id="tune-taste-shortcut" style="cursor:pointer;">Tune Taste ⚡</span>
       </div>
       <div class="song-list-container" id="home-taste-songs">
-        ${recommendedTracks.slice(0, 5).map((track, i) => createSongRowHtml(track, i)).join('')}
+        ${((recommendedTracks && recommendedTracks.length > 0) ? recommendedTracks : DEFAULT_TRACKS).slice(0, 5).map((track, i) => createSongRowHtml(track, i)).join('')}
       </div>
 
       <!-- Made For You Banner -->
@@ -1151,6 +1158,10 @@ async function initApp() {
         `;
       })()}
     `;
+
+    if (savedScroll && el.viewport) {
+      el.viewport.scrollTop = savedScroll;
+    }
 
     // Asynchronously fetch live artist recommendations if not yet cached
     if (topArtist && (!state.artistRecommendationsCache || !state.artistRecommendationsCache[topArtist])) {
@@ -1349,7 +1360,62 @@ async function initApp() {
     if (topArtist && artistSongs.length > 0) {
       bindSongRows(document.getElementById('home-artist-songs'), artistSongs);
     }
-    bindSongRows(document.getElementById('home-taste-songs'), recommendedTracks.slice(0, 5));
+    const tasteSource = (recommendedTracks && Array.isArray(recommendedTracks) && recommendedTracks.length > 0) ? recommendedTracks : DEFAULT_TRACKS;
+    bindSongRows(document.getElementById('home-taste-songs'), tasteSource.slice(0, 5));
+  }
+
+  function renderHomeView() {
+    state.currentTab = 'home';
+    if (typeof updateSidebarActiveUI === 'function') updateSidebarActiveUI('home');
+    if (typeof updateHeaderSearchUI === 'function') updateHeaderSearchUI('home');
+    const user = AuthManager.getCurrentUser();
+
+    // 1. Instant Synchronous Draw (0ms Delay)
+    if (cachedHomeData) {
+      drawHomeViewContent(
+        cachedHomeData.recentHistory,
+        cachedHomeData.prefs,
+        cachedHomeData.recommendedTracks,
+        cachedHomeData.globalCharts,
+        user
+      );
+    } else {
+      const localRecent = StorageManager.getRecentTracks();
+      drawHomeViewContent(localRecent, null, DEFAULT_TRACKS, { results: [] }, user);
+    }
+
+    // 2. Non-blocking SWR Background Revalidation
+    refreshHomeDataInBackground(user);
+  }
+
+  async function refreshHomeDataInBackground(user) {
+    if (homeFetchInProgress) return;
+    homeFetchInProgress = true;
+    try {
+      const [recentHistory, prefs, recommendedTracks, globalCharts] = await Promise.all([
+        DbManager.getListeningHistory(user?.uid, 14).catch(() => []),
+        DbManager.getPreferences(user?.uid).catch(() => null),
+        DbManager.getRecommendations(user?.uid, DEFAULT_TRACKS).catch(() => DEFAULT_TRACKS),
+        fetch('/api/charts?country=us&limit=20').then(r => r.json()).catch(() => ({ results: [] }))
+      ]);
+
+      cachedHomeData = {
+        recentHistory,
+        prefs,
+        recommendedTracks,
+        globalCharts
+      };
+
+      if (state.currentTab === 'home') {
+        const savedScroll = el.viewport ? el.viewport.scrollTop : 0;
+        drawHomeViewContent(recentHistory, prefs, recommendedTracks, globalCharts, user, true);
+        if (el.viewport) el.viewport.scrollTop = savedScroll;
+      }
+    } catch (err) {
+      console.warn('[Ember] Background home refresh error:', err);
+    } finally {
+      homeFetchInProgress = false;
+    }
   }
 
   /* ==========================================================================
@@ -2480,90 +2546,100 @@ async function initApp() {
   /* ==========================================================================
      Screen 8: DEDICATED LIKED SONGS VIEW (Requirement 6)
      ========================================================================== */
-  async function openLikedSongsView() {
-    await triggerViewTransition('Loading Liked Songs...', async () => {
-      state.previousTab = state.currentTab;
-      state.currentTab = 'liked-songs';
+  function drawLikedSongsViewContent(likedTracks, user) {
+    el.viewport.innerHTML = `
+      <!-- Top Nav -->
+      <div class="playlist-top-nav">
+        <button class="header-icon-btn" id="btn-liked-back" title="Back">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+        <span class="playlist-nav-pill">Collection</span>
+        <div style="width:36px;"></div>
+      </div>
 
-      if (el.viewport) el.viewport.scrollTop = 0;
-      if (typeof updateSidebarActiveUI === 'function') updateSidebarActiveUI('liked-songs');
-      if (typeof updateHeaderSearchUI === 'function') updateHeaderSearchUI('liked-songs');
-
-      const user = AuthManager.getCurrentUser();
-      const likedTracks = await DbManager.getLikedSongs(user?.uid);
-
-      el.viewport.innerHTML = `
-        <!-- Top Nav -->
-        <div class="playlist-top-nav">
-          <button class="header-icon-btn" id="btn-liked-back" title="Back">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
-          </button>
-          <span class="playlist-nav-pill">Collection</span>
-          <div style="width:36px;"></div>
+      <!-- Hero Banner -->
+      <div class="playlist-hero-header">
+        <div class="playlist-cover-big playlist-cover-liked">
+          <svg width="60" height="60" viewBox="0 0 24 24" fill="#ffffff"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
         </div>
-
-        <!-- Hero Banner -->
-        <div class="playlist-hero-header">
-          <div class="playlist-cover-big playlist-cover-liked">
-            <svg width="60" height="60" viewBox="0 0 24 24" fill="#ffffff"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+        <div class="playlist-hero-details">
+          <span class="playlist-type-badge">Personal Collection</span>
+          <h1 class="playlist-info-title">Liked Songs</h1>
+          <div class="playlist-info-creator">
+            <span class="playlist-creator-name">${user ? escapeHtml(user.displayName) : 'Guest Collection'}</span>
+            <span class="playlist-meta-dot">•</span>
+            <span class="playlist-stats-text">${(likedTracks || []).length} ${(likedTracks || []).length === 1 ? 'song' : 'songs'} saved</span>
           </div>
-          <div class="playlist-hero-details">
-            <span class="playlist-type-badge">Personal Collection</span>
-            <h1 class="playlist-info-title">Liked Songs</h1>
-            <div class="playlist-info-creator">
-              <span class="playlist-creator-name">${user ? escapeHtml(user.displayName) : 'Guest Collection'}</span>
-              <span class="playlist-meta-dot">•</span>
-              <span class="playlist-stats-text">${likedTracks.length} ${likedTracks.length === 1 ? 'song' : 'songs'} saved</span>
-            </div>
-            <p class="playlist-info-description">All the tracks you love, gathered in one place.</p>
+          <p class="playlist-info-description">All the tracks you love, gathered in one place.</p>
 
-            <div class="playlist-action-bar">
-              <div class="playlist-action-group-left"></div>
-              <button class="btn-big-play-playlist" id="btn-play-all-liked" title="Play All Liked">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4"/></svg>
-              </button>
-            </div>
+          <div class="playlist-action-bar">
+            <div class="playlist-action-group-left"></div>
+            <button class="btn-big-play-playlist" id="btn-play-all-liked" title="Play All Liked">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4"/></svg>
+            </button>
           </div>
         </div>
+      </div>
 
-        <!-- Songs List -->
-        <div class="song-list-container" id="liked-tracks-container">
-          ${likedTracks.length > 0
-            ? likedTracks.map((track, i) => createSongRowHtml(track, i)).join('')
-            : '<div style="text-align:center; padding:48px 20px; color:var(--text-gray); font-size:0.88rem;">No liked songs yet.<br><span style="font-size:0.75rem; color:var(--text-dim);">Tap the heart icon on any track to save it here.</span></div>'
-          }
-        </div>
-      `;
-
-      document.getElementById('btn-liked-back')?.addEventListener('click', () => {
-        switchTab(state.previousTab || 'library');
-      });
-
-      document.getElementById('btn-play-all-liked')?.addEventListener('click', () => {
-        if (likedTracks.length > 0) {
-          player.setQueue(likedTracks, 0, true);
-          showToast('Playing Liked Songs', 'success');
-        } else {
-          showToast('No liked songs in your collection yet', 'info');
+      <!-- Songs List -->
+      <div class="song-list-container" id="liked-tracks-container">
+        ${(likedTracks || []).length > 0
+          ? (likedTracks || []).map((track, i) => createSongRowHtml(track, i)).join('')
+          : '<div style="text-align:center; padding:48px 20px; color:var(--text-gray); font-size:0.88rem;">No liked songs yet.<br><span style="font-size:0.75rem; color:var(--text-dim);">Tap the heart icon on any track to save it here.</span></div>'
         }
-      });
+      </div>
+    `;
 
-      bindSongRows(document.getElementById('liked-tracks-container'), likedTracks);
+    document.getElementById('btn-liked-back')?.addEventListener('click', () => {
+      switchTab(state.previousTab || 'library');
     });
+
+    document.getElementById('btn-play-all-liked')?.addEventListener('click', () => {
+      if ((likedTracks || []).length > 0) {
+        player.setQueue(likedTracks, 0, true);
+        showToast('Playing Liked Songs', 'success');
+      } else {
+        showToast('No liked songs in your collection yet', 'info');
+      }
+    });
+
+    bindSongRows(document.getElementById('liked-tracks-container'), likedTracks || []);
+  }
+
+  function openLikedSongsView() {
+    state.previousTab = state.currentTab;
+    state.currentTab = 'liked-songs';
+
+    if (el.viewport) el.viewport.scrollTop = 0;
+    if (typeof updateSidebarActiveUI === 'function') updateSidebarActiveUI('liked-songs');
+    if (typeof updateHeaderSearchUI === 'function') updateHeaderSearchUI('liked-songs');
+
+    const user = AuthManager.getCurrentUser();
+    const likedTracks = cachedLibraryData?.liked || StorageManager.getLikedSongs() || [];
+
+    triggerViewTransition(() => {
+      drawLikedSongsViewContent(likedTracks, user);
+    });
+
+    if (user?.uid) {
+      DbManager.getLikedSongs(user.uid).then(fresh => {
+        if (fresh && state.currentTab === 'liked-songs') {
+          if (!cachedLibraryData) cachedLibraryData = {};
+          cachedLibraryData.liked = fresh;
+          const savedScroll = el.viewport ? el.viewport.scrollTop : 0;
+          drawLikedSongsViewContent(fresh, user);
+          if (el.viewport) el.viewport.scrollTop = savedScroll;
+        }
+      }).catch(() => {});
+    }
   }
 
   /* ==========================================================================
-     Screen 9: YOUR LIBRARY VIEW
+     Screen 9: YOUR LIBRARY VIEW (SWR Instant Rendering)
      ========================================================================== */
-  async function renderLibraryView() {
-    state.currentTab = 'library';
-    if (typeof updateSidebarActiveUI === 'function') updateSidebarActiveUI('library');
-    if (typeof updateHeaderSearchUI === 'function') updateHeaderSearchUI('library');
-    const user = AuthManager.getCurrentUser();
-    const liked = (await DbManager.getLikedSongs(user?.uid)) || [];
-    let customPlaylists = (await DbManager.getPlaylists(user?.uid)) || [];
-    if (!Array.isArray(customPlaylists)) customPlaylists = [];
-    renderSidebarPlaylists();
+  function drawLibraryViewContent(liked, customPlaylists, user) {
+    const likedList = liked || [];
+    const playlistsList = customPlaylists || [];
 
     el.viewport.innerHTML = `
       <div class="section-title-row" style="margin-bottom:12px;">
@@ -2605,13 +2681,13 @@ async function initApp() {
         </div>
         <div class="song-row-meta">
           <div class="song-row-title">Liked Songs</div>
-          <div class="song-row-artist">${liked.length} saved songs</div>
+          <div class="song-row-artist">${likedList.length} saved songs</div>
         </div>
       </div>
 
       <!-- User Custom Playlists -->
       <div id="library-custom-playlists">
-        ${customPlaylists.map(pl => {
+        ${playlistsList.map(pl => {
           const coverArt = pl.cover || pl.tracks?.[0]?.thumbnail;
           return `
             <div class="ember-song-row" data-playlist-id="${escapeHtml(pl.id)}" style="margin-bottom:8px; cursor:pointer;">
@@ -2661,7 +2737,7 @@ async function initApp() {
       if (openCreateBtn) openCreateBtn.style.display = 'flex';
       if (likedRow) likedRow.style.display = 'flex';
       if (customPlaylistsWrap) {
-        customPlaylistsWrap.innerHTML = customPlaylists.map(pl => {
+        customPlaylistsWrap.innerHTML = playlistsList.map(pl => {
           const coverArt = pl.cover || pl.tracks?.[0]?.thumbnail;
           return `
             <div class="ember-song-row" data-playlist-id="${escapeHtml(pl.id)}" style="margin-bottom:8px; cursor:pointer;">
@@ -2689,7 +2765,7 @@ async function initApp() {
       if (openCreateBtn) openCreateBtn.style.display = 'none';
       if (likedRow) likedRow.style.display = 'none';
       const artistMap = {};
-      [...liked, ...customPlaylists.flatMap(p => p.tracks || [])].forEach(t => {
+      [...likedList, ...playlistsList.flatMap(p => p.tracks || [])].forEach(t => {
         const a = cleanArtistName(t.artist, t.title);
         if (a) artistMap[a] = (artistMap[a] || 0) + 1;
       });
@@ -2812,37 +2888,61 @@ async function initApp() {
     });
   }
 
+  function renderLibraryView() {
+    state.currentTab = 'library';
+    if (typeof updateSidebarActiveUI === 'function') updateSidebarActiveUI('library');
+    if (typeof updateHeaderSearchUI === 'function') updateHeaderSearchUI('library');
+    const user = AuthManager.getCurrentUser();
+
+    // 1. Instant Synchronous Draw
+    const liked = cachedLibraryData?.liked || StorageManager.getLikedSongs() || [];
+    let customPlaylists = cachedLibraryData?.customPlaylists || StorageManager.getPlaylists() || [];
+    if (!Array.isArray(customPlaylists)) customPlaylists = [];
+
+    renderSidebarPlaylists();
+    drawLibraryViewContent(liked, customPlaylists, user);
+
+    // 2. Non-blocking Background Revalidation
+    if (user?.uid) {
+      refreshLibraryDataInBackground(user);
+    }
+  }
+
+  async function refreshLibraryDataInBackground(user) {
+    if (libraryFetchInProgress) return;
+    libraryFetchInProgress = true;
+    try {
+      const [liked, customPlaylists] = await Promise.all([
+        DbManager.getLikedSongs(user.uid).catch(() => StorageManager.getLikedSongs()),
+        DbManager.getPlaylists(user.uid).catch(() => StorageManager.getPlaylists())
+      ]);
+      cachedLibraryData = {
+        liked: liked || [],
+        customPlaylists: Array.isArray(customPlaylists) ? customPlaylists : []
+      };
+      if (state.currentTab === 'library') {
+        const savedScroll = el.viewport ? el.viewport.scrollTop : 0;
+        drawLibraryViewContent(cachedLibraryData.liked, cachedLibraryData.customPlaylists, user);
+        if (el.viewport) el.viewport.scrollTop = savedScroll;
+      }
+    } catch (e) {
+      console.warn('[Ember] Library background refresh error:', e);
+    } finally {
+      libraryFetchInProgress = false;
+    }
+  }
+
   /* ==========================================================================
      Screen 10: USER PROFILE VIEW (Requirement 5 & 9 — Zero Social Data)
      ========================================================================== */
-  async function renderProfileView() {
-    state.currentTab = 'profile';
-    if (typeof updateSidebarActiveUI === 'function') updateSidebarActiveUI(state.previousTab === 'recently-played' ? 'recently-played' : 'profile');
-    if (typeof updateHeaderSearchUI === 'function') updateHeaderSearchUI('profile');
-    const user = AuthManager.getCurrentUser();
-
-    let profile = null;
-    let prefs = { favorite_genres: [], favorite_artists: [] };
-    let liked = [];
-    let playlists = [];
-    let history = [];
-
-    if (user) {
-      profile = await DbManager.getProfile(user.uid);
-      prefs = await DbManager.getPreferences(user.uid);
-      liked = await DbManager.getLikedSongs(user.uid);
-      playlists = await DbManager.getPlaylists(user.uid);
-      history = await DbManager.getListeningHistory(user.uid, 6);
-    } else {
-      liked = StorageManager.getLikedSongs();
-      playlists = StorageManager.getPlaylists();
-      history = StorageManager.getRecentTracks().slice(0, 6);
-    }
-
+  function drawProfileViewContent(profile, prefs, liked, playlists, history, user) {
     const displayName = profile?.display_name || user?.displayName || (user ? user.email.split('@')[0] : 'Guest Listener');
     const username = profile?.username || (user ? `@${user.email.split('@')[0]}` : '@guest');
     const initials = getInitials(displayName);
     const photoURL = profile?.avatar_url || user?.photoURL;
+    const playList = playlists || [];
+    const likedList = liked || [];
+    const histList = history || [];
 
     el.viewport.innerHTML = `
       <div class="profile-screen-container">
@@ -2865,15 +2965,15 @@ async function initApp() {
         <!-- Clean Music Stats Row (Strictly Zero Followers/Following as per Req 9) -->
         <div class="profile-stats-row" style="margin:20px 0;">
           <div class="stat-item" style="flex:1;">
-            <div class="stat-num">${playlists.length}</div>
+            <div class="stat-num">${playList.length}</div>
             <div class="stat-lbl">Playlists</div>
           </div>
           <div class="stat-item" style="flex:1;">
-            <div class="stat-num">${liked.length}</div>
+            <div class="stat-num">${likedList.length}</div>
             <div class="stat-lbl">Liked Songs</div>
           </div>
           <div class="stat-item" style="flex:1;">
-            <div class="stat-num">${history.length}</div>
+            <div class="stat-num">${histList.length}</div>
             <div class="stat-lbl">History</div>
           </div>
         </div>
@@ -2886,7 +2986,7 @@ async function initApp() {
         <div style="width:100%; margin-bottom:20px; background:var(--bg-card); padding:16px; border-radius:16px; border:1px solid var(--border-card);">
           <div style="font-size:0.75rem; color:var(--text-muted); margin-bottom:8px; font-weight:700; text-transform:uppercase;">Favorite Genres</div>
           <div style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:14px;">
-            ${(prefs.favorite_genres && prefs.favorite_genres.length > 0)
+            ${(prefs?.favorite_genres && prefs.favorite_genres.length > 0)
               ? prefs.favorite_genres.map(g => `<span class="ember-pill active" style="font-size:0.74rem; padding:4px 10px;">${escapeHtml(g)}</span>`).join('')
               : '<span style="font-size:0.76rem; color:var(--text-gray);">No genres selected yet. Tap Edit to tune.</span>'
             }
@@ -2894,7 +2994,7 @@ async function initApp() {
 
           <div style="font-size:0.75rem; color:var(--text-muted); margin-bottom:8px; font-weight:700; text-transform:uppercase;">Favorite Artists</div>
           <div style="display:flex; flex-wrap:wrap; gap:6px;">
-            ${(prefs.favorite_artists && prefs.favorite_artists.length > 0)
+            ${(prefs?.favorite_artists && prefs.favorite_artists.length > 0)
               ? prefs.favorite_artists.map(a => `<span class="artist-badge-tag">${escapeHtml(a)}</span>`).join('')
               : '<span style="font-size:0.76rem; color:var(--text-gray);">No favorite artists added yet.</span>'
             }
@@ -2904,11 +3004,11 @@ async function initApp() {
         <!-- Listening History Section -->
         <div class="section-title-row" style="width:100%; margin-bottom:10px;">
           <h3>Listening History</h3>
-          ${history.length > 0 ? `<span class="section-see-all" id="btn-clear-history-trigger" style="color:#ff6666;">Clear</span>` : ''}
+          ${histList.length > 0 ? `<span class="section-see-all" id="btn-clear-history-trigger" style="color:#ff6666;">Clear</span>` : ''}
         </div>
         <div class="song-list-container" id="profile-tracks-container" style="width:100%;">
-          ${history.length > 0
-            ? history.map((track, i) => createSongRowHtml(track, i)).join('')
+          ${histList.length > 0
+            ? histList.map((track, i) => createSongRowHtml(track, i)).join('')
             : '<div style="text-align:center; padding:24px; color:var(--text-gray); font-size:0.8rem;">No listening history yet. Play some tracks!</div>'
           }
         </div>
@@ -2942,6 +3042,7 @@ async function initApp() {
     document.getElementById('btn-clear-history-trigger')?.addEventListener('click', async () => {
       await DbManager.clearListeningHistory(user?.uid);
       showToast('Listening history cleared', 'success');
+      cachedProfileData = null;
       renderProfileView();
     });
 
@@ -2952,10 +3053,72 @@ async function initApp() {
     document.getElementById('btn-sign-out')?.addEventListener('click', async () => {
       await AuthManager.signOut();
       showToast('Signed out', 'info');
+      cachedProfileData = null;
+      cachedLibraryData = null;
+      cachedHomeData = null;
       renderProfileView();
     });
 
-    bindSongRows(document.getElementById('profile-tracks-container'), history);
+    bindSongRows(document.getElementById('profile-tracks-container'), histList);
+  }
+
+  function renderProfileView() {
+    state.currentTab = 'profile';
+    if (typeof updateSidebarActiveUI === 'function') updateSidebarActiveUI(state.previousTab === 'recently-played' ? 'recently-played' : 'profile');
+    if (typeof updateHeaderSearchUI === 'function') updateHeaderSearchUI('profile');
+    const user = AuthManager.getCurrentUser();
+
+    // 1. Instant Synchronous Draw
+    if (cachedProfileData) {
+      drawProfileViewContent(
+        cachedProfileData.profile,
+        cachedProfileData.prefs,
+        cachedProfileData.liked,
+        cachedProfileData.playlists,
+        cachedProfileData.history,
+        user
+      );
+    } else {
+      const liked = cachedLibraryData?.liked || StorageManager.getLikedSongs();
+      const playlists = cachedLibraryData?.customPlaylists || StorageManager.getPlaylists();
+      const history = StorageManager.getRecentTracks().slice(0, 6);
+      drawProfileViewContent(null, { favorite_genres: [], favorite_artists: [] }, liked, playlists, history, user);
+    }
+
+    // 2. Non-blocking Background Revalidation
+    if (user?.uid) {
+      refreshProfileDataInBackground(user);
+    }
+  }
+
+  async function refreshProfileDataInBackground(user) {
+    if (profileFetchInProgress) return;
+    profileFetchInProgress = true;
+    try {
+      const [profile, prefs, liked, playlists, history] = await Promise.all([
+        DbManager.getProfile(user.uid).catch(() => null),
+        DbManager.getPreferences(user.uid).catch(() => ({ favorite_genres: [], favorite_artists: [] })),
+        DbManager.getLikedSongs(user.uid).catch(() => StorageManager.getLikedSongs()),
+        DbManager.getPlaylists(user.uid).catch(() => StorageManager.getPlaylists()),
+        DbManager.getListeningHistory(user.uid, 6).catch(() => StorageManager.getRecentTracks().slice(0, 6))
+      ]);
+      cachedProfileData = {
+        profile,
+        prefs: prefs || { favorite_genres: [], favorite_artists: [] },
+        liked: liked || [],
+        playlists: playlists || [],
+        history: history || []
+      };
+      if (state.currentTab === 'profile' || state.currentTab === 'recently-played') {
+        const savedScroll = el.viewport ? el.viewport.scrollTop : 0;
+        drawProfileViewContent(cachedProfileData.profile, cachedProfileData.prefs, cachedProfileData.liked, cachedProfileData.playlists, cachedProfileData.history, user);
+        if (el.viewport) el.viewport.scrollTop = savedScroll;
+      }
+    } catch (e) {
+      console.warn('[Ember] Profile background refresh error:', e);
+    } finally {
+      profileFetchInProgress = false;
+    }
   }
 
   /* ==========================================================================
@@ -2998,70 +3161,62 @@ async function initApp() {
       el.viewport.scrollTop = 0;
     }
 
-    // Update bottom nav tabs
+    // Update bottom nav tabs instantly
     el.navTabs.forEach(tab => {
       tab.classList.toggle('active', tab.dataset.tab === tabName || (['explore', 'artists', 'albums'].includes(tabName) && tab.dataset.tab === 'search'));
     });
 
-    // Update desktop sidebar tabs
+    // Update desktop sidebar tabs instantly
     updateSidebarActiveUI(tabName);
 
     // Header compact search bar: ONLY visible on 'home' tab
     updateHeaderSearchUI(tabName);
 
-    const tabMessages = {
-      'home': 'Loading Soundscape...',
-      'search': 'Searching Soundscapes...',
-      'explore': 'Exploring Music...',
-      'artists': 'Discovering Artists...',
-      'albums': 'Exploring Albums...',
-      'library': 'Opening Your Library...',
-      'profile': 'Opening Profile...',
-      'recently-played': 'Loading History...',
-      'liked-songs': 'Loading Liked Songs...'
-    };
-    const message = tabMessages[tabName] || 'Loading...';
-
-    await triggerViewTransition(message, async () => {
+    const renderAction = () => {
       switch (tabName) {
         case 'home':
-          await renderHomeView();
+          renderHomeView();
           break;
         case 'search':
-          await renderSearchView(autoFocusSearch);
+          renderSearchView(autoFocusSearch);
           break;
         case 'explore':
           state.searchQuery = '';
           state.searchFilter = 'all';
-          await renderSearchView(false);
+          renderSearchView(false);
           break;
         case 'artists':
           state.searchFilter = 'artists';
-          await renderSearchView(true);
+          renderSearchView(true);
           break;
         case 'albums':
           state.searchFilter = 'albums';
-          await renderSearchView(true);
+          renderSearchView(true);
           break;
         case 'recently-played':
         case 'profile':
-          await renderProfileView();
+          renderProfileView();
           break;
         case 'library':
-          await renderLibraryView();
+          renderLibraryView();
           break;
         case 'liked-songs':
-          await openLikedSongsView();
+          openLikedSongsView();
           break;
         default:
-          await renderHomeView();
+          renderHomeView();
       }
-    });
+    };
+
+    await triggerViewTransition(renderAction);
   }
   window.switchTab = switchTab;
   window.openPlaylistView = openPlaylistView;
   window.openLikedSongsView = openLikedSongsView;
   window.renderLibraryView = renderLibraryView;
+  window.renderHomeView = renderHomeView;
+  window.renderProfileView = renderProfileView;
+  window.renderSearchView = renderSearchView;
 
   // Bind Bottom Nav Tabs
   el.navTabs.forEach(tab => {
@@ -3336,6 +3491,8 @@ async function initApp() {
       triggerHaptic('double');
       const user = AuthManager.getCurrentUser();
       const isLiked = await DbManager.toggleLikeSong(user?.uid, player.currentTrack);
+      invalidateLibraryCache();
+      invalidateProfileCache();
       updateLikeIcons(isLiked);
       showToast(isLiked ? 'Added to Liked Songs' : 'Removed from Liked Songs', 'success');
       return isLiked;
@@ -3747,6 +3904,8 @@ async function initApp() {
     if (player.currentTrack) {
       const user = AuthManager.getCurrentUser();
       const isLiked = await DbManager.toggleLikeSong(user?.uid, player.currentTrack);
+      invalidateLibraryCache();
+      invalidateProfileCache();
       updateLikeIcons(isLiked);
       showToast(isLiked ? 'Added to Liked Songs' : 'Removed from Liked Songs', 'success');
     }
@@ -4093,6 +4252,8 @@ async function initApp() {
       if (player.currentTrack) {
         const user = AuthManager.getCurrentUser();
         const isLiked = await DbManager.toggleLikeSong(user?.uid, player.currentTrack);
+        invalidateLibraryCache();
+        invalidateProfileCache();
         updateLikeIcons(isLiked);
         showToast(isLiked ? 'Added to Liked Songs' : 'Removed from Liked Songs', 'success');
       }
@@ -5171,6 +5332,8 @@ async function initApp() {
 
     const user = AuthManager.getCurrentUser();
     const newPl = await DbManager.createPlaylist(user?.uid, title);
+    invalidateLibraryCache();
+    invalidateProfileCache();
     el.createPlaylistModal.style.display = 'none';
     showToast(`Created playlist "${title}"`, 'success');
 

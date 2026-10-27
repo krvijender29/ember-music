@@ -4001,23 +4001,56 @@ body.now-playing-open {
 }
 
 /* ==============================================================================
-   Native View Transitions API & Smooth Page Morphs
+   Native View Transitions API & Smooth Page Morphs (Isolated Viewport Only)
    ============================================================================== */
-::view-transition-old(root) {
-  animation: 160ms cubic-bezier(0.4, 0, 1, 1) both emberViewFadeOut;
+:root {
+  view-transition-name: none;
 }
-::view-transition-new(root) {
-  animation: 220ms cubic-bezier(0, 0, 0.2, 1) both emberViewFadeIn;
+
+#ember-main-viewport {
+  view-transition-name: ember-main-viewport;
+}
+
+.sidebar-wrapper,
+.sidebar-glass,
+.ember-desktop-sidebar,
+.ember-top-header,
+.ember-mini-player,
+.ember-bottom-nav,
+.ember-now-playing-sheet,
+#ember-toast-box {
+  view-transition-name: none !important;
+}
+
+::view-transition-group(ember-main-viewport) {
+  animation-duration: 160ms;
+}
+
+::view-transition-old(ember-main-viewport) {
+  animation: 120ms cubic-bezier(0.4, 0, 1, 1) both emberViewFadeOut;
+}
+::view-transition-new(ember-main-viewport) {
+  animation: 160ms cubic-bezier(0, 0, 0.2, 1) both emberViewFadeIn;
 }
 
 @keyframes emberViewFadeOut {
-  from { opacity: 1; transform: scale(1); }
-  to { opacity: 0; transform: scale(0.992) translateY(-4px); }
+  from { opacity: 1; transform: translateY(0); }
+  to { opacity: 0; transform: translateY(-4px); }
 }
 
 @keyframes emberViewFadeIn {
-  from { opacity: 0; transform: scale(1.008) translateY(4px); }
-  to { opacity: 1; transform: scale(1) translateY(0); }
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Fast CSS-only fallback for non-ViewTransition environments */
+.view-fade-quick {
+  animation: emberQuickFade 130ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes emberQuickFade {
+  from { opacity: 0.7; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 /* ==============================================================================
