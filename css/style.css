@@ -3219,3 +3219,494 @@ body.now-playing-open {
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
 }
 
+/* ==========================================================================
+   Interactive 5-Band Equalizer (EQ) Modal
+   ========================================================================== */
+.eq-modal-card {
+  background: rgba(18, 18, 22, 0.95);
+  backdrop-filter: blur(28px);
+  -webkit-backdrop-filter: blur(28px);
+  border: 1px solid rgba(255, 90, 54, 0.2);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8), 0 0 30px rgba(255, 90, 54, 0.12);
+}
+
+.eq-presets-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+  margin-bottom: 20px;
+  scrollbar-width: none;
+}
+.eq-presets-row::-webkit-scrollbar {
+  display: none;
+}
+
+.eq-preset-btn {
+  font-size: 0.74rem;
+  padding: 5px 12px;
+  white-space: nowrap;
+  border-radius: 20px;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--text-gray, #9E9EA4);
+  transition: all 0.2s ease;
+}
+.eq-preset-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+.eq-preset-btn.active {
+  background: rgba(255, 90, 54, 0.18);
+  border-color: rgba(255, 90, 54, 0.5);
+  color: #FF7A50;
+  font-weight: 700;
+  box-shadow: 0 0 12px rgba(255, 90, 54, 0.25);
+}
+
+.eq-sliders-grid {
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 16px;
+  padding: 18px 10px;
+  margin-bottom: 14px;
+}
+
+.eq-band-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 52px;
+}
+
+.eq-val-badge {
+  font-family: var(--font-mono, Consolas, Monaco, monospace);
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #FF9472;
+  background: rgba(255, 90, 54, 0.1);
+  border: 1px solid rgba(255, 90, 54, 0.25);
+  padding: 2px 5px;
+  border-radius: 6px;
+  min-width: 38px;
+  text-align: center;
+}
+
+.eq-slider-track-wrap {
+  height: 140px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  width: 24px;
+}
+
+.eq-slider-vertical {
+  -webkit-appearance: slider-vertical;
+  appearance: slider-vertical;
+  writing-mode: bt-lr;
+  width: 8px;
+  height: 130px;
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  outline: none;
+  cursor: pointer;
+  accent-color: #FF5A36;
+}
+
+.eq-freq-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text-white, #FFFFFF);
+}
+
+.eq-sub-label {
+  font-size: 0.65rem;
+  color: var(--text-dim, #71717A);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* ==========================================================================
+   Sleep Timer Modal & Countdown Badges
+   ========================================================================== */
+.timer-modal-card {
+  background: rgba(18, 18, 22, 0.95);
+  backdrop-filter: blur(28px);
+  -webkit-backdrop-filter: blur(28px);
+  border: 1px solid rgba(255, 90, 54, 0.2);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8), 0 0 30px rgba(255, 90, 54, 0.12);
+}
+
+.timer-countdown-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  background: linear-gradient(135deg, rgba(255, 90, 54, 0.15) 0%, rgba(138, 43, 226, 0.12) 100%);
+  border: 1px solid rgba(255, 90, 54, 0.35);
+  border-radius: 12px;
+  margin-bottom: 16px;
+}
+
+.timer-pulse-icon {
+  font-size: 1.4rem;
+  animation: timerPulse 2s infinite ease-in-out;
+}
+
+@keyframes timerPulse {
+  0%, 100% { transform: scale(1); opacity: 0.85; }
+  50% { transform: scale(1.15); opacity: 1; filter: drop-shadow(0 0 6px #FF5A36); }
+}
+
+.timer-presets-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.timer-preset-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 14px 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  cursor: pointer;
+  color: #fff;
+  transition: all 0.2s ease;
+}
+.timer-preset-btn:hover {
+  background: rgba(255, 90, 54, 0.15);
+  border-color: rgba(255, 90, 54, 0.4);
+  transform: translateY(-1px);
+}
+
+.timer-num {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: #FF7A50;
+}
+
+.timer-unit {
+  font-size: 0.72rem;
+  color: var(--text-gray, #9E9EA4);
+}
+
+.timer-end-song-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px dashed rgba(255, 255, 255, 0.16);
+  border-radius: 12px;
+  cursor: pointer;
+  color: var(--text-white, #FFFFFF);
+  font-size: 0.84rem;
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+.timer-end-song-btn:hover {
+  background: rgba(255, 90, 54, 0.12);
+  border-color: rgba(255, 90, 54, 0.45);
+  color: #FF7A50;
+}
+
+/* ==========================================================================
+   Dynamic Ambient Glow & Mesh Backdrop
+   ========================================================================== */
+:root {
+  --ambient-glow-1: #FF5A36;
+  --ambient-glow-2: #8A2BE2;
+  --ambient-rgb-1: 255, 90, 54;
+  --ambient-rgb-2: 138, 43, 226;
+}
+
+.sheet-ambient-layer {
+  position: absolute;
+  inset: -60px;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  filter: blur(85px) saturate(2) brightness(0.35);
+  transform: scale(1.15) translateZ(0);
+  pointer-events: none;
+  z-index: 0;
+  transition: background-image 1s ease, filter 1s ease;
+}
+
+.sheet-ambient-overlay {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 30% 20%, rgba(var(--ambient-rgb-1), 0.35) 0%, transparent 60%),
+              radial-gradient(circle at 75% 70%, rgba(var(--ambient-rgb-2), 0.25) 0%, transparent 65%),
+              linear-gradient(to bottom, rgba(9, 9, 9, 0.2) 0%, rgba(9, 9, 9, 0.75) 50%, #090909 98%);
+  pointer-events: none;
+  z-index: 1;
+  transition: background 1s ease;
+}
+
+/* Dynamic glow line on top of Desktop Player bar */
+.ember-mini-player::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent 0%, rgba(var(--ambient-rgb-1), 0.75) 30%, rgba(var(--ambient-rgb-2), 0.75) 70%, transparent 100%);
+  pointer-events: none;
+  z-index: 10;
+  transition: background 1s ease;
+}
+
+/* Active glowing button state for Sleep Timer, EQ & Lyrics */
+.btn-bottom-icon.active-feature,
+.desktop-tool-btn.active-feature {
+  color: #FF5A36 !important;
+  background: rgba(255, 90, 54, 0.16) !important;
+  border-radius: 8px;
+  box-shadow: 0 0 10px rgba(255, 90, 54, 0.3);
+}
+
+/* ==========================================================================
+   Time-Synced Lyrics Mode (Karaoke)
+   ========================================================================== */
+.sheet-lyrics-container {
+  width: 100%;
+  max-width: 440px;
+  height: 100%;
+  max-height: 440px;
+  display: flex;
+  flex-direction: column;
+  background: rgba(14, 14, 18, 0.75);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 20px;
+  padding: 16px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
+  position: relative;
+  overflow: hidden;
+  animation: fadeInLyrics 0.25s ease-out;
+}
+
+@keyframes fadeInLyrics {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.lyrics-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  flex-shrink: 0;
+}
+
+.lyrics-provider-pill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #FFA07A;
+  background: rgba(255, 90, 54, 0.12);
+  border: 1px solid rgba(255, 90, 54, 0.25);
+  padding: 4px 10px;
+  border-radius: 14px;
+}
+
+.lyrics-live-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #FF5A36;
+  box-shadow: 0 0 8px #FF5A36;
+  animation: pulseDot 1.5s infinite;
+}
+
+@keyframes pulseDot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.7); }
+}
+
+.btn-close-lyrics {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: var(--text-gray, #9E9EA4);
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s ease;
+}
+.btn-close-lyrics:hover {
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+}
+
+.lyrics-scroll-box {
+  flex: 1;
+  overflow-y: auto;
+  scroll-behavior: smooth;
+  padding: 40px 10px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+  mask-image: linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%);
+}
+
+.lyrics-loading-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 12px;
+  color: var(--text-gray, #9E9EA4);
+  font-size: 0.85rem;
+}
+
+.lyrics-spinner {
+  width: 26px;
+  height: 26px;
+  border: 3px solid rgba(255, 90, 54, 0.2);
+  border-top-color: #FF5A36;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.lyrics-content-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  text-align: center;
+}
+
+.lyric-line {
+  font-size: 1.05rem;
+  font-weight: 600;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.35);
+  cursor: pointer;
+  padding: 6px 12px;
+  border-radius: 10px;
+  transition: all 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+  user-select: none;
+}
+.lyric-line:hover {
+  color: rgba(255, 255, 255, 0.8);
+  background: rgba(255, 255, 255, 0.05);
+}
+.lyric-line.active-line {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: #FFFFFF;
+  text-shadow: 0 0 16px rgba(255, 90, 54, 0.7), 0 0 32px rgba(255, 90, 54, 0.35);
+  transform: scale(1.05);
+}
+
+/* ==========================================================================
+   Drag-and-Drop Queue & Playlist Reordering
+   ========================================================================== */
+.queue-drag-handle {
+  color: var(--text-dim, #71717A);
+  cursor: grab;
+  padding: 4px 6px;
+  font-size: 16px;
+  user-select: none;
+  transition: color 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.queue-drag-handle:active {
+  cursor: grabbing;
+  color: #FF5A36;
+}
+
+.queue-item-row.dragging {
+  opacity: 0.4;
+  background: rgba(255, 90, 54, 0.15) !important;
+  border: 1px dashed #FF5A36 !important;
+}
+
+.queue-item-row.drag-over {
+  border-top: 2px solid #FF5A36 !important;
+  background: rgba(255, 90, 54, 0.1) !important;
+}
+
+/* ==========================================================================
+   Instant In-Library Search & Filter Bar
+   ========================================================================== */
+.library-search-wrap {
+  position: relative;
+  margin-bottom: 16px;
+  width: 100%;
+}
+
+.library-search-input {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  padding: 10px 38px 10px 38px;
+  font-size: 0.84rem;
+  color: #FFFFFF;
+  outline: none;
+  transition: all 0.2s ease;
+  box-sizing: border-box;
+}
+.library-search-input:focus {
+  background: rgba(255, 255, 255, 0.09);
+  border-color: rgba(255, 90, 54, 0.5);
+  box-shadow: 0 0 16px rgba(255, 90, 54, 0.2);
+}
+
+.library-search-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-gray, #9E9EA4);
+  pointer-events: none;
+}
+
+.library-search-clear {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: var(--text-gray, #9E9EA4);
+  cursor: pointer;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.library-search-clear:hover {
+  color: #FFFFFF;
+}
+

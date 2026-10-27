@@ -246,12 +246,21 @@
         </button>
       </div>
 
-      <!-- Right: Desktop Volume, Queue & Expand (Desktop Only) -->
+      <!-- Right: Desktop Volume, Tools, Queue & Expand (Desktop Only) -->
       <div class="player-desktop-right" id="player-desktop-right">
         <button class="desktop-tool-btn" id="desktop-like-btn" title="Like Song">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
         </button>
-        <button class="desktop-tool-btn" id="desktop-queue-btn" title="Queue & Library">
+        <button class="desktop-tool-btn" id="desktop-lyrics-btn" title="Live Synced Lyrics (Karaoke)">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+        </button>
+        <button class="desktop-tool-btn" id="desktop-eq-btn" title="Equalizer & Sound FX">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
+        </button>
+        <button class="desktop-tool-btn" id="desktop-timer-btn" title="Sleep Timer">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        </button>
+        <button class="desktop-tool-btn" id="desktop-queue-btn" title="Queue">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
         </button>
         <div class="desktop-volume-wrap">
@@ -316,10 +325,28 @@
 
           <!-- Main Layout Grid / Wrapper (2-Column Desktop, 1-Column Mobile) -->
           <div class="sheet-content-wrapper">
-            <!-- Left Column: Album Artwork -->
-            <div class="sheet-artwork-column">
-              <div class="sheet-artwork-container">
+            <!-- Left Column: Album Artwork & Live Synced Lyrics -->
+            <div class="sheet-artwork-column" id="sheet-artwork-column">
+              <div class="sheet-artwork-container" id="sheet-artwork-container">
                 <img src="assets/images/ember_banner.jpg" alt="Album Cover" id="sheet-artwork" class="sheet-artwork-img">
+              </div>
+
+              <!-- Time-Synced Karaoke Lyrics View -->
+              <div class="sheet-lyrics-container" id="sheet-lyrics-container" style="display:none;">
+                <div class="lyrics-header-row">
+                  <div class="lyrics-provider-pill" id="lyrics-provider-pill">
+                    <span class="lyrics-live-dot"></span>
+                    <span id="lyrics-source-label">Synced Lyrics (LRCLIB)</span>
+                  </div>
+                  <button class="btn-close-lyrics" id="btn-close-lyrics" title="Back to Artwork">✕</button>
+                </div>
+                <div class="lyrics-scroll-box" id="lyrics-scroll-box">
+                  <div class="lyrics-loading-state" id="lyrics-loading-state">
+                    <div class="lyrics-spinner"></div>
+                    <span id="lyrics-loading-text">Fetching synced lyrics...</span>
+                  </div>
+                  <div class="lyrics-content-list" id="lyrics-content-list" style="display:none;"></div>
+                </div>
               </div>
             </div>
 
@@ -376,6 +403,18 @@
                   </span>
                 </div>
                 <div class="sheet-action-btns">
+                  <button class="btn-bottom-icon" id="sheet-lyrics-btn" title="Live Synced Lyrics" aria-label="Lyrics">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+                    <span>Lyrics</span>
+                  </button>
+                  <button class="btn-bottom-icon" id="sheet-eq-btn" title="Audio Equalizer" aria-label="Equalizer">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
+                    <span>EQ</span>
+                  </button>
+                  <button class="btn-bottom-icon" id="sheet-timer-btn" title="Sleep Timer" aria-label="Sleep Timer">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+                    <span id="sheet-timer-label">Timer</span>
+                  </button>
                   <button class="btn-bottom-icon" id="sheet-queue-btn" title="Queue" aria-label="Queue">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
                     <span>Queue</span>
@@ -532,9 +571,147 @@
           <div class="shortcut-row"><span class="shortcut-desc">Toggle Fullscreen Player</span><kbd class="shortcut-key">F</kbd></div>
           <div class="shortcut-row"><span class="shortcut-desc">Like / Unlike Song</span><kbd class="shortcut-key">Shift + L</kbd></div>
           <div class="shortcut-row"><span class="shortcut-desc">Search Catalog</span><kbd class="shortcut-key">Ctrl + K</kbd></div>
+          <div class="shortcut-row"><span class="shortcut-desc">Toggle Synced Lyrics</span><kbd class="shortcut-key">Y</kbd></div>
+          <div class="shortcut-row"><span class="shortcut-desc">Equalizer (EQ)</span><kbd class="shortcut-key">E</kbd></div>
+          <div class="shortcut-row"><span class="shortcut-desc">Sleep Timer</span><kbd class="shortcut-key">T</kbd></div>
           <div class="shortcut-row"><span class="shortcut-desc">Close Modal or Sheet</span><kbd class="shortcut-key">Esc</kbd></div>
           <div class="shortcut-row"><span class="shortcut-desc">Shortcuts Guide</span><kbd class="shortcut-key">?</kbd></div>
         </div>
+      </div>
+    </div>
+
+    <!-- 5-Band Interactive Equalizer Modal -->
+    <div class="ember-modal-backdrop" id="equalizer-modal" style="display:none;">
+      <div class="ember-modal-card eq-modal-card" style="max-width:480px; width:92%;">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#FF5A36" stroke-width="2.2"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
+            <h3 style="font-size:1.15rem; font-weight:800; color:var(--text-white); margin:0;">Audio Equalizer</h3>
+          </div>
+          <div style="display:flex; align-items:center; gap:12px;">
+            <label class="ember-switch" title="Toggle Equalizer Processing">
+              <input type="checkbox" id="toggle-eq-enable" checked>
+              <span class="ember-slider"></span>
+            </label>
+            <button class="header-icon-btn" id="btn-close-eq-modal" title="Close" style="width:28px; height:28px; padding:0; display:flex; align-items:center; justify-content:center; color:var(--text-gray);">✕</button>
+          </div>
+        </div>
+
+        <!-- Presets Row -->
+        <div class="eq-presets-row" id="eq-presets-container">
+          <button class="ember-pill eq-preset-btn active" data-preset="Flat">Flat</button>
+          <button class="ember-pill eq-preset-btn" data-preset="Ember Bass Boost">Bass Boost</button>
+          <button class="ember-pill eq-preset-btn" data-preset="Vocal Clarity">Vocal</button>
+          <button class="ember-pill eq-preset-btn" data-preset="Electronic / EDM">EDM</button>
+          <button class="ember-pill eq-preset-btn" data-preset="Acoustic / Rock">Rock</button>
+          <button class="ember-pill eq-preset-btn" data-preset="Podcast / Speech">Podcast</button>
+        </div>
+
+        <!-- 5-Band Vertical Slider Grid -->
+        <div class="eq-sliders-grid" id="eq-sliders-grid">
+          <!-- 60 Hz -->
+          <div class="eq-band-col">
+            <span class="eq-val-badge" id="eq-val-0">0dB</span>
+            <div class="eq-slider-track-wrap">
+              <input type="range" class="eq-slider-vertical" id="eq-band-0" data-band="0" min="-12" max="12" value="0" step="1">
+            </div>
+            <span class="eq-freq-label">60Hz</span>
+            <span class="eq-sub-label">Sub</span>
+          </div>
+
+          <!-- 230 Hz -->
+          <div class="eq-band-col">
+            <span class="eq-val-badge" id="eq-val-1">0dB</span>
+            <div class="eq-slider-track-wrap">
+              <input type="range" class="eq-slider-vertical" id="eq-band-1" data-band="1" min="-12" max="12" value="0" step="1">
+            </div>
+            <span class="eq-freq-label">230Hz</span>
+            <span class="eq-sub-label">Bass</span>
+          </div>
+
+          <!-- 910 Hz -->
+          <div class="eq-band-col">
+            <span class="eq-val-badge" id="eq-val-2">0dB</span>
+            <div class="eq-slider-track-wrap">
+              <input type="range" class="eq-slider-vertical" id="eq-band-2" data-band="2" min="-12" max="12" value="0" step="1">
+            </div>
+            <span class="eq-freq-label">910Hz</span>
+            <span class="eq-sub-label">Mid</span>
+          </div>
+
+          <!-- 3.6 kHz -->
+          <div class="eq-band-col">
+            <span class="eq-val-badge" id="eq-val-3">0dB</span>
+            <div class="eq-slider-track-wrap">
+              <input type="range" class="eq-slider-vertical" id="eq-band-3" data-band="3" min="-12" max="12" value="0" step="1">
+            </div>
+            <span class="eq-freq-label">3.6kHz</span>
+            <span class="eq-sub-label">High</span>
+          </div>
+
+          <!-- 14 kHz -->
+          <div class="eq-band-col">
+            <span class="eq-val-badge" id="eq-val-4">0dB</span>
+            <div class="eq-slider-track-wrap">
+              <input type="range" class="eq-slider-vertical" id="eq-band-4" data-band="4" min="-12" max="12" value="0" step="1">
+            </div>
+            <span class="eq-freq-label">14kHz</span>
+            <span class="eq-sub-label">Air</span>
+          </div>
+        </div>
+
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:14px; padding-top:10px; border-top:1px solid rgba(255,255,255,0.06); font-size:0.75rem; color:var(--text-gray);">
+          <span id="eq-status-text">Profile: Flat (Natural)</span>
+          <button class="ember-pill" id="btn-reset-eq" style="font-size:0.7rem; padding:4px 10px;">Reset to Flat</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sleep Timer Modal -->
+    <div class="ember-modal-backdrop" id="sleep-timer-modal" style="display:none;">
+      <div class="ember-modal-card timer-modal-card" style="max-width:380px; width:92%;">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#FF5A36" stroke-width="2.2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+            <h3 style="font-size:1.15rem; font-weight:800; color:var(--text-white); margin:0;">Sleep Timer</h3>
+          </div>
+          <button class="header-icon-btn" id="btn-close-timer-modal" title="Close" style="width:28px; height:28px; padding:0; display:flex; align-items:center; justify-content:center; color:var(--text-gray);">✕</button>
+        </div>
+
+        <div class="timer-countdown-banner" id="timer-countdown-banner" style="display:none;">
+          <div class="timer-pulse-icon">🌙</div>
+          <div style="flex:1;">
+            <div style="font-weight:700; color:#fff; font-size:0.9rem;" id="timer-status-title">Timer Running</div>
+            <div style="font-size:0.75rem; color:#FFA07A;" id="timer-status-countdown">--:-- remaining</div>
+          </div>
+          <button class="ember-pill" id="btn-stop-timer" style="font-size:0.72rem; padding:4px 10px; border-color:rgba(255,90,54,0.4); color:#ff6b4a;">Turn Off</button>
+        </div>
+
+        <p style="font-size:0.78rem; color:var(--text-gray); margin-bottom:14px;">Stop playback automatically with smooth 5-second fade-out:</p>
+
+        <div class="timer-presets-grid">
+          <button class="timer-preset-btn" data-minutes="15">
+            <span class="timer-num">15</span>
+            <span class="timer-unit">Minutes</span>
+          </button>
+          <button class="timer-preset-btn" data-minutes="30">
+            <span class="timer-num">30</span>
+            <span class="timer-unit">Minutes</span>
+          </button>
+          <button class="timer-preset-btn" data-minutes="45">
+            <span class="timer-num">45</span>
+            <span class="timer-unit">Minutes</span>
+          </button>
+          <button class="timer-preset-btn" data-minutes="60">
+            <span class="timer-num">60</span>
+            <span class="timer-unit">Minutes</span>
+          </button>
+        </div>
+
+        <button class="timer-end-song-btn" id="btn-timer-end-of-song">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          <span>End of Current Song</span>
+        </button>
       </div>
     </div>
 

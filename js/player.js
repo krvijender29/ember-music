@@ -34,6 +34,32 @@ class MusicPlayer {
     this.isFetchingAutoplay = false;
     this.isVideoVisible = false;
 
+    // Sleep Timer
+    this.sleepTimerTicker = null;
+    this.sleepTimerSecondsRemaining = 0;
+    this.sleepTimerEndOfSong = false;
+    this.onSleepTimerTick = null;
+
+    // 5-Band Equalizer & Web Audio API
+    this.audioCtx = null;
+    this.audioSourceNode = null;
+    this.eqFilters = [];
+    this.eqMasterGain = null;
+    this.eqFrequencies = [60, 230, 910, 3600, 14000];
+    this.eqTypes = ['lowshelf', 'peaking', 'peaking', 'peaking', 'highshelf'];
+    this.eqPresets = {
+      'Flat': [0, 0, 0, 0, 0],
+      'Ember Bass Boost': [6, 4, -1, 1, 3],
+      'Vocal Clarity': [-2, 1, 4, 3, 1],
+      'Electronic / EDM': [5, 3, -2, 2, 5],
+      'Acoustic / Rock': [4, 2, 0, 2, 4],
+      'Podcast / Speech': [-4, 2, 5, 2, -2]
+    };
+    const savedEq = (typeof StorageManager !== 'undefined' && StorageManager.getEqSettings) ? StorageManager.getEqSettings() : { enabled: true, preset: 'Flat', bands: [0, 0, 0, 0, 0] };
+    this.eqEnabled = savedEq.enabled ?? true;
+    this.eqPreset = savedEq.preset || 'Flat';
+    this.eqBands = Array.isArray(savedEq.bands) && savedEq.bands.length === 5 ? savedEq.bands : [0, 0, 0, 0, 0];
+
     // Callbacks
     this.onTrackChange = null;
     this.onStateChange = null;
@@ -108,6 +134,11 @@ class MusicPlayer {
     // YT.PlayerState: -1 unstarted, 0 ended, 1 playing, 2 paused, 3 buffering, 5 cued
     if (event.data === 1) { // Playing
       this.isPlaying = true;
+
+    // Resume AudioContext for Equalizer if suspended
+    if (this.audioCtx && this.audioCtx.state === 'suspended') {
+      try { this.audioCtx.resume(); } catch (_) {}
+    }
       this.startYtTicker();
       if (this.onStateChange) this.onStateChange({ isPlaying: true, isBuffering: false });
     } else if (event.data === 2) { // Paused
@@ -195,6 +226,11 @@ class MusicPlayer {
     a.addEventListener('play', () => {
       if (this.activeEngine === 'audio') {
         this.isPlaying = true;
+
+    // Resume AudioContext for Equalizer if suspended
+    if (this.audioCtx && this.audioCtx.state === 'suspended') {
+      try { this.audioCtx.resume(); } catch (_) {}
+    }
         if (this.onStateChange) this.onStateChange({ isPlaying: true, isBuffering: false });
       }
     });
@@ -202,6 +238,11 @@ class MusicPlayer {
     a.addEventListener('playing', () => {
       if (this.activeEngine === 'audio') {
         this.isPlaying = true;
+
+    // Resume AudioContext for Equalizer if suspended
+    if (this.audioCtx && this.audioCtx.state === 'suspended') {
+      try { this.audioCtx.resume(); } catch (_) {}
+    }
         if (this.onStateChange) this.onStateChange({ isPlaying: true, isBuffering: false });
       }
     });
@@ -248,6 +289,14 @@ class MusicPlayer {
   }
 
   handleTrackEnded() {
+    if (this.sleepTimerEndOfSong) {
+      this.cancelSleepTimer();
+      this.pause();
+      if (typeof window.showToast === 'function') {
+        window.showToast('🌙 Sleep timer finished at the end of song. Goodnight!', 'info');
+      }
+      return;
+    }
     if (this.repeatMode === 'one') {
       this.seekTo(0);
       this.play();
@@ -369,6 +418,11 @@ class MusicPlayer {
           if (autoPlay) {
             this.ytPlayer.loadVideoById(track.id);
             this.isPlaying = true;
+
+    // Resume AudioContext for Equalizer if suspended
+    if (this.audioCtx && this.audioCtx.state === 'suspended') {
+      try { this.audioCtx.resume(); } catch (_) {}
+    }
             this.startYtTicker();
           } else {
             this.ytPlayer.cueVideoById(track.id);
@@ -395,6 +449,11 @@ class MusicPlayer {
     }
 
     this.isPlaying = true;
+
+    // Resume AudioContext for Equalizer if suspended
+    if (this.audioCtx && this.audioCtx.state === 'suspended') {
+      try { this.audioCtx.resume(); } catch (_) {}
+    }
     if (this.activeEngine === 'youtube' && this.ytPlayer && typeof this.ytPlayer.playVideo === 'function') {
       try {
         this.ytPlayer.playVideo();
@@ -814,6 +873,235 @@ class MusicPlayer {
         if (details.seekTime !== undefined) this.seekTo(details.seekTime);
       });
     } catch (_) {}
+  }
+
+  reorderQueue(fromIndex, toIndex) {
+    if (fromIndex < 0 || fromIndex >= this.queue.length || toIndex < 0 || toIndex >= this.queue.length) return;
+    const curTrack = this.currentTrack;
+    const [moved] = this.queue.splice(fromIndex, 1);
+    this.queue.splice(toIndex, 0, moved);
+    if (curTrack) {
+      this.queueIndex = this.queue.findIndex(t =>
+        (t.id && curTrack.id && t.id === curTrack.id) ||
+        (t.title === curTrack.title && t.artist === curTrack.artist)
+      );
+    }
+    this.notifyQueueChange();
+  }
+
+  // ==========================================
+  // Web Audio API 5-Band Interactive Equalizer
+  // ==========================================
+  initAudioContext() {
+    if (this.audioCtx) {
+      if (this.audioCtx.state === 'suspended') {
+        try { this.audioCtx.resume(); } catch (_) {}
+      }
+      return;
+    }
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+      this.audioCtx = new AudioCtx();
+
+      this.eqFilters = this.eqFrequencies.map((freq, idx) => {
+        const filter = this.audioCtx.createBiquadFilter();
+        filter.type = this.eqTypes[idx];
+        filter.frequency.value = freq;
+        filter.gain.value = this.eqEnabled ? this.eqBands[idx] : 0;
+        if (filter.type === 'peaking') filter.Q.value = 1.0;
+        return filter;
+      });
+
+      this.eqMasterGain = this.audioCtx.createGain();
+      this.eqMasterGain.gain.value = 1.0;
+
+      if (!this.audioSourceNode && this.audio) {
+        try {
+          this.audio.crossOrigin = 'anonymous';
+          this.audioSourceNode = this.audioCtx.createMediaElementSource(this.audio);
+          let lastNode = this.audioSourceNode;
+          this.eqFilters.forEach(f => {
+            lastNode.connect(f);
+            lastNode = f;
+          });
+          lastNode.connect(this.eqMasterGain);
+          this.eqMasterGain.connect(this.audioCtx.destination);
+        } catch (srcErr) {
+          console.warn('[Ember EQ] Audio element routing:', srcErr);
+        }
+      }
+    } catch (err) {
+      console.warn('[Ember EQ] AudioContext error:', err);
+    }
+  }
+
+  setEqBandGain(index, gainDb) {
+    if (index < 0 || index >= this.eqBands.length) return;
+    const clampedGain = Math.max(-12, Math.min(12, Math.round(gainDb)));
+    this.eqBands[index] = clampedGain;
+    this.eqPreset = 'Custom';
+
+    this.initAudioContext();
+    if (this.eqFilters[index] && this.audioCtx) {
+      const targetGain = this.eqEnabled ? clampedGain : 0;
+      try {
+        this.eqFilters[index].gain.setTargetAtTime(targetGain, this.audioCtx.currentTime, 0.05);
+      } catch (_) {
+        this.eqFilters[index].gain.value = targetGain;
+      }
+    }
+
+    if (typeof StorageManager !== 'undefined' && StorageManager.setEqSettings) {
+      StorageManager.setEqSettings({
+        enabled: this.eqEnabled,
+        preset: this.eqPreset,
+        bands: [...this.eqBands]
+      });
+    }
+  }
+
+  applyEqPreset(presetName) {
+    if (!this.eqPresets[presetName]) return;
+    this.eqPreset = presetName;
+    this.eqBands = [...this.eqPresets[presetName]];
+
+    this.initAudioContext();
+    this.eqFilters.forEach((filter, idx) => {
+      if (filter && this.audioCtx) {
+        const targetGain = this.eqEnabled ? this.eqBands[idx] : 0;
+        try {
+          filter.gain.setTargetAtTime(targetGain, this.audioCtx.currentTime, 0.05);
+        } catch (_) {
+          filter.gain.value = targetGain;
+        }
+      }
+    });
+
+    if (typeof StorageManager !== 'undefined' && StorageManager.setEqSettings) {
+      StorageManager.setEqSettings({
+        enabled: this.eqEnabled,
+        preset: this.eqPreset,
+        bands: [...this.eqBands]
+      });
+    }
+  }
+
+  setEqEnabled(enabled) {
+    this.eqEnabled = !!enabled;
+    this.initAudioContext();
+    this.eqFilters.forEach((filter, idx) => {
+      if (filter && this.audioCtx) {
+        const targetGain = this.eqEnabled ? this.eqBands[idx] : 0;
+        try {
+          filter.gain.setTargetAtTime(targetGain, this.audioCtx.currentTime, 0.05);
+        } catch (_) {
+          filter.gain.value = targetGain;
+        }
+      }
+    });
+
+    if (typeof StorageManager !== 'undefined' && StorageManager.setEqSettings) {
+      StorageManager.setEqSettings({
+        enabled: this.eqEnabled,
+        preset: this.eqPreset,
+        bands: [...this.eqBands]
+      });
+    }
+  }
+
+  getEqSettings() {
+    return {
+      enabled: this.eqEnabled,
+      preset: this.eqPreset,
+      bands: [...this.eqBands]
+    };
+  }
+
+  // ==========================================
+  // Sleep Timer with Gentle 5s Fade-Out
+  // ==========================================
+  startSleepTimer(minutes, endOfSong = false) {
+    this.cancelSleepTimer(false);
+
+    if (endOfSong) {
+      this.sleepTimerEndOfSong = true;
+      this.sleepTimerSecondsRemaining = 0;
+      this._emitSleepTimerTick();
+      if (typeof window.showToast === 'function') {
+        window.showToast('🌙 Sleep timer active: Music will pause after this song', 'info');
+      }
+      return;
+    }
+
+    const totalSeconds = Math.max(1, Math.round(minutes * 60));
+    this.sleepTimerSecondsRemaining = totalSeconds;
+    this.sleepTimerEndOfSong = false;
+    this._emitSleepTimerTick();
+
+    if (typeof window.showToast === 'function') {
+      window.showToast(`🌙 Sleep timer set for ${minutes} min`, 'info');
+    }
+
+    const initialVolume = this.volume;
+
+    this.sleepTimerTicker = setInterval(() => {
+      if (this.sleepTimerSecondsRemaining > 0) {
+        this.sleepTimerSecondsRemaining--;
+        this._emitSleepTimerTick();
+
+        // Smooth 5-second fade-out before pausing
+        if (this.sleepTimerSecondsRemaining <= 5 && this.sleepTimerSecondsRemaining > 0) {
+          const fadeFactor = this.sleepTimerSecondsRemaining / 5;
+          const fadedVol = Math.max(0, Math.min(1, (initialVolume / 100) * fadeFactor));
+          if (this.audio) this.audio.volume = fadedVol;
+          if (this.ytPlayer && typeof this.ytPlayer.setVolume === 'function') {
+            try { this.ytPlayer.setVolume(Math.round(fadedVol * 100)); } catch (_) {}
+          }
+        }
+
+        if (this.sleepTimerSecondsRemaining <= 0) {
+          this.cancelSleepTimer(false);
+          this.pause();
+          this.setVolume(initialVolume);
+          if (typeof window.showToast === 'function') {
+            window.showToast('🌙 Sleep timer finished. Goodnight!', 'info');
+          }
+        }
+      }
+    }, 1000);
+  }
+
+  cancelSleepTimer(notify = true) {
+    if (this.sleepTimerTicker) {
+      clearInterval(this.sleepTimerTicker);
+      this.sleepTimerTicker = null;
+    }
+    this.sleepTimerSecondsRemaining = 0;
+    this.sleepTimerEndOfSong = false;
+    this.setVolume(this.volume);
+    if (notify) {
+      this._emitSleepTimerTick();
+      if (typeof window.showToast === 'function') {
+        window.showToast('🌙 Sleep timer turned off', 'info');
+      }
+    }
+  }
+
+  getSleepTimerStatus() {
+    return {
+      isActive: this.sleepTimerSecondsRemaining > 0 || this.sleepTimerEndOfSong,
+      remainingSeconds: this.sleepTimerSecondsRemaining,
+      endOfSong: this.sleepTimerEndOfSong
+    };
+  }
+
+  _emitSleepTimerTick() {
+    const detail = this.getSleepTimerStatus();
+    if (typeof this.onSleepTimerTick === 'function') {
+      this.onSleepTimerTick(detail);
+    }
+    window.dispatchEvent(new CustomEvent('ember:sleeptimer', { detail }));
   }
 
   formatTime(seconds) {

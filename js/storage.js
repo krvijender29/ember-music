@@ -13,7 +13,8 @@ const StorageManager = {
     STREAMING_ENGINE: 'aurawave_streaming_engine',
     PIPED_INSTANCE: 'aurawave_piped_instance',
     ALT_CACHE: 'aurawave_alt_track_cache',
-    SEARCH_HISTORY: 'ember_search_history'
+    SEARCH_HISTORY: 'ember_search_history',
+    EQ_SETTINGS: 'ember_eq_settings'
   },
 
   DEFAULT_API_KEY: 'AIzaSyDUnACXuxfMyOy3OrCgRSgm3eTmsEFY9xw',
@@ -330,6 +331,35 @@ const StorageManager = {
     const current = this.getSettings();
     const updated = { ...current, ...settings };
     localStorage.setItem(this.KEYS.SETTINGS, JSON.stringify(updated));
+  },
+
+  // Custom Playlist Track Order Update
+  updatePlaylistTracks(playlistId, tracks) {
+    if (!Array.isArray(tracks)) return false;
+    const playlists = this.getPlaylists();
+    const pl = playlists.find(p => p.id === playlistId);
+    if (pl) {
+      pl.tracks = tracks;
+      localStorage.setItem(this.KEYS.PLAYLISTS, JSON.stringify(playlists));
+      return true;
+    }
+    return false;
+  },
+
+  // 5-Band Equalizer Settings
+  getEqSettings() {
+    try {
+      const data = localStorage.getItem(this.KEYS.EQ_SETTINGS);
+      return data ? JSON.parse(data) : { enabled: true, preset: 'Flat', bands: [0, 0, 0, 0, 0] };
+    } catch (_) {
+      return { enabled: true, preset: 'Flat', bands: [0, 0, 0, 0, 0] };
+    }
+  },
+
+  setEqSettings(eqSettings) {
+    try {
+      localStorage.setItem(this.KEYS.EQ_SETTINGS, JSON.stringify(eqSettings));
+    } catch (_) {}
   }
 };
 
