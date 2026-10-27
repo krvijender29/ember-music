@@ -298,9 +298,9 @@ const StorageManager = {
   getSettings() {
     try {
       const data = localStorage.getItem(this.KEYS.SETTINGS);
-      return data ? JSON.parse(data) : { volume: 80, repeat: 'all', shuffle: false };
+      return data ? JSON.parse(data) : { volume: 80, repeat: 'all', shuffle: false, infiniteAutoplay: true };
     } catch (e) {
-      return { volume: 80, repeat: 'all', shuffle: false };
+      return { volume: 80, repeat: 'all', shuffle: false, infiniteAutoplay: true };
     }
   },
 

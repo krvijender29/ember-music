@@ -298,6 +298,9 @@
       <!-- Dedicated Scroll Viewport (Never disconnects from backdrop) -->
       <div class="sheet-scroll-viewport" id="sheet-scroll-viewport">
         <div class="sheet-inner-container">
+          <!-- Mobile Drag Handle for Swipe-Down-To-Dismiss -->
+          <div class="sheet-drag-handle" id="sheet-drag-handle" aria-label="Drag down to collapse player"></div>
+
           <!-- Minimal Top Header Bar -->
           <div class="sheet-header-bar">
             <button class="btn-sheet-icon" id="btn-sheet-collapse" title="Collapse Player" aria-label="Collapse">
@@ -443,6 +446,22 @@
             <button class="header-icon-btn" id="btn-close-queue" title="Close Queue" style="width:28px; height:28px; padding:0; display:flex; align-items:center; justify-content:center; color:var(--text-gray);">✕</button>
           </div>
         </div>
+
+        <!-- Smart Infinite Autoplay (Ember Flow) Toggle -->
+        <div class="queue-autoplay-banner" id="queue-autoplay-banner">
+          <div class="queue-autoplay-meta">
+            <span class="queue-autoplay-badge">♾️</span>
+            <div>
+              <div class="queue-autoplay-title">Smart Infinite Autoplay</div>
+              <div class="queue-autoplay-subtitle">Auto-queue similar tracks when music finishes</div>
+            </div>
+          </div>
+          <label class="ember-switch" title="Toggle Smart Autoplay">
+            <input type="checkbox" id="toggle-infinite-autoplay" checked>
+            <span class="ember-slider"></span>
+          </label>
+        </div>
+
         <div id="queue-modal-list" style="overflow-y:auto; flex:1; display:flex; flex-direction:column; gap:6px; padding-right:4px;">
           <!-- Dynamically populated queue items -->
         </div>
@@ -489,6 +508,33 @@
           <!-- Dynamically populated playlists -->
         </div>
         <button class="auth-submit-btn" id="btn-modal-create-new-pl" style="margin-top:6px;">+ Create New Playlist</button>
+      </div>
+    </div>
+
+    <!-- Keyboard Shortcuts Modal -->
+    <div class="ember-modal-backdrop" id="shortcuts-modal" style="display:none;">
+      <div class="ember-modal-card" style="max-width:440px; width:92%; max-height:85vh; display:flex; flex-direction:column;">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; flex-shrink:0;">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span style="font-size:1.2rem;">⌨️</span>
+            <h3 style="font-size:1.15rem; font-weight:800; color:var(--text-white); margin:0;">Keyboard Shortcuts</h3>
+          </div>
+          <button class="header-icon-btn" id="btn-close-shortcuts" title="Close" style="width:28px; height:28px; padding:0; display:flex; align-items:center; justify-content:center; color:var(--text-gray);">✕</button>
+        </div>
+        <div class="shortcuts-list" style="overflow-y:auto; display:flex; flex-direction:column; gap:8px; padding-right:2px;">
+          <div class="shortcut-row"><span class="shortcut-desc">Play / Pause</span><kbd class="shortcut-key">Space</kbd></div>
+          <div class="shortcut-row"><span class="shortcut-desc">Next Track</span><kbd class="shortcut-key">Shift + →</kbd> or <kbd class="shortcut-key">N</kbd></div>
+          <div class="shortcut-row"><span class="shortcut-desc">Previous Track</span><kbd class="shortcut-key">Shift + ←</kbd> or <kbd class="shortcut-key">P</kbd></div>
+          <div class="shortcut-row"><span class="shortcut-desc">Seek Forward 5s</span><kbd class="shortcut-key">→</kbd> or <kbd class="shortcut-key">L</kbd></div>
+          <div class="shortcut-row"><span class="shortcut-desc">Seek Backward 5s</span><kbd class="shortcut-key">←</kbd> or <kbd class="shortcut-key">J</kbd></div>
+          <div class="shortcut-row"><span class="shortcut-desc">Volume Up / Down (5%)</span><kbd class="shortcut-key">↑</kbd> / <kbd class="shortcut-key">↓</kbd></div>
+          <div class="shortcut-row"><span class="shortcut-desc">Mute / Unmute</span><kbd class="shortcut-key">M</kbd></div>
+          <div class="shortcut-row"><span class="shortcut-desc">Toggle Fullscreen Player</span><kbd class="shortcut-key">F</kbd></div>
+          <div class="shortcut-row"><span class="shortcut-desc">Like / Unlike Song</span><kbd class="shortcut-key">Shift + L</kbd></div>
+          <div class="shortcut-row"><span class="shortcut-desc">Search Catalog</span><kbd class="shortcut-key">Ctrl + K</kbd></div>
+          <div class="shortcut-row"><span class="shortcut-desc">Close Modal or Sheet</span><kbd class="shortcut-key">Esc</kbd></div>
+          <div class="shortcut-row"><span class="shortcut-desc">Shortcuts Guide</span><kbd class="shortcut-key">?</kbd></div>
+        </div>
       </div>
     </div>
 

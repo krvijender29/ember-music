@@ -30,6 +30,8 @@ class MusicPlayer {
     this.audio.volume = Math.max(0, Math.min(1, this.volume / 100));
     this.repeatMode = StorageManager.getSettings().repeat ?? 'all'; // 'off' | 'all' | 'one'
     this.isShuffled = StorageManager.getSettings().shuffle ?? false;
+    this.infiniteAutoplay = StorageManager.getSettings().infiniteAutoplay ?? true;
+    this.isFetchingAutoplay = false;
     this.isVideoVisible = false;
 
     // Callbacks
@@ -449,13 +451,27 @@ class MusicPlayer {
     }
   }
 
-  next(manual = true) {
+  async next(manual = true) {
     if (this.queue.length === 0) return;
 
     if (this.queueIndex < this.queue.length - 1) {
       this.queueIndex++;
       this.loadTrack(this.queue[this.queueIndex], true);
+      // Pre-fetch infinite flow if listener reaches the last song
+      if (this.infiniteAutoplay && this.queueIndex === this.queue.length - 1) {
+        this.fetchAutoplayRecommendations(this.queue[this.queueIndex]);
+      }
     } else {
+      // Reached the end of queue - trigger Smart Infinite Autoplay
+      if (this.infiniteAutoplay) {
+        const added = await this.fetchAutoplayRecommendations(this.currentTrack);
+        if (added && added.length > 0 && this.queueIndex < this.queue.length - 1) {
+          this.queueIndex++;
+          this.loadTrack(this.queue[this.queueIndex], true);
+          return;
+        }
+      }
+
       if (this.repeatMode === 'all' || manual) {
         this.queueIndex = 0;
         this.loadTrack(this.queue[0], true);
@@ -465,6 +481,75 @@ class MusicPlayer {
         if (this.onStateChange) this.onStateChange({ isPlaying: false, isBuffering: false });
       }
     }
+  }
+
+  /**
+   * Smart Infinite Autoplay (Ember Flow)
+   * Automatically discovers and appends similar tracks when queue reaches the end.
+   */
+  async fetchAutoplayRecommendations(track) {
+    if (this.isFetchingAutoplay || !this.infiniteAutoplay) return [];
+    this.isFetchingAutoplay = true;
+
+    try {
+      const artist = track?.artist || track?.channelTitle || '';
+      let targetQuery = '';
+      if (typeof cleanArtistName === 'function' && artist) {
+        targetQuery = cleanArtistName(artist, track?.title);
+      } else {
+        targetQuery = artist || track?.title || 'Trending Hits';
+      }
+
+      let candidates = [];
+      try {
+        const res = await fetch(`/api/search?q=${encodeURIComponent(targetQuery)}&filter=songs&n=15`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.results && data.results.length > 0) {
+            candidates = data.results;
+          }
+        }
+      } catch (err) {
+        console.warn('[Ember] Autoplay search fallback:', err);
+      }
+
+      if (candidates.length === 0) {
+        try {
+          const res = await fetch('/api/trending');
+          if (res.ok) {
+            const data = await res.json();
+            if (data && data.results) candidates = data.results;
+          }
+        } catch (_) {}
+      }
+
+      // Filter out songs already in the queue or current track
+      const existingIds = new Set(this.queue.map(t => String(t.id)));
+      if (this.currentTrack) existingIds.add(String(this.currentTrack.id));
+
+      const newTracks = candidates.filter(t => t && t.id && !existingIds.has(String(t.id)));
+
+      if (newTracks.length > 0) {
+        const toAppend = newTracks.slice(0, 8);
+        this.queue.push(...toAppend);
+        this.notifyQueueChange();
+        if (typeof showToast === 'function') {
+          showToast(`♾️ Ember Flow: Added ${toAppend.length} similar songs based on ${targetQuery}`, 'info');
+        }
+        return toAppend;
+      }
+    } catch (err) {
+      console.warn('[Ember] Failed to fetch autoplay flow:', err);
+    } finally {
+      this.isFetchingAutoplay = false;
+    }
+    return [];
+  }
+
+  setInfiniteAutoplay(enable) {
+    this.infiniteAutoplay = !!enable;
+    StorageManager.saveSettings({ infiniteAutoplay: this.infiniteAutoplay });
+    return this.infiniteAutoplay;
   }
 
   previous(forceTrackChange = true) {

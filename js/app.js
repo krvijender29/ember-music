@@ -2857,14 +2857,20 @@ async function initApp() {
     player.next();
   });
 
-  el.miniLikeBtn.addEventListener('click', async (e) => {
-    e.stopPropagation();
+  async function toggleCurrentTrackLike() {
     if (player.currentTrack) {
       const user = AuthManager.getCurrentUser();
       const isLiked = await DbManager.toggleLikeSong(user?.uid, player.currentTrack);
       updateLikeIcons(isLiked);
       showToast(isLiked ? 'Added to Liked Songs' : 'Removed from Liked Songs', 'success');
+      return isLiked;
     }
+  }
+  window.toggleCurrentTrackLike = toggleCurrentTrackLike;
+
+  el.miniLikeBtn.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    await toggleCurrentTrackLike();
   });
 
   // ==========================================================================
@@ -2947,6 +2953,121 @@ async function initApp() {
   el.btnSheetCollapse.addEventListener('click', () => {
     closeNowPlayingSheet();
   });
+
+  /* ==========================================================================
+     Mobile Touch Gestures (Mini Player Swipe & Sheet Drag-to-Dismiss)
+     ========================================================================== */
+  // 1. Mini-Player Horizontal Swipe (Next/Previous) & Vertical Swipe Up (Expand)
+  if (el.miniPlayer) {
+    let touchStartX = 0;
+    let touchStartY = 0;
+    let touchStartTime = 0;
+    let isSwiping = false;
+
+    el.miniPlayer.addEventListener('touchstart', (e) => {
+      if (e.touches.length !== 1) return;
+      touchStartX = e.touches[0].clientX;
+      touchStartY = e.touches[0].clientY;
+      touchStartTime = performance.now();
+      isSwiping = false;
+    }, { passive: true });
+
+    el.miniPlayer.addEventListener('touchmove', (e) => {
+      if (e.touches.length !== 1) return;
+      const currentX = e.touches[0].clientX;
+      const currentY = e.touches[0].clientY;
+      const diffX = currentX - touchStartX;
+      const diffY = currentY - touchStartY;
+
+      if (Math.abs(diffX) > Math.abs(diffY) && Math.abs(diffX) > 10) {
+        isSwiping = true;
+        el.miniPlayer.style.transform = `translateX(${diffX * 0.35}px)`;
+        el.miniPlayer.classList.toggle('swiping-left', diffX < -15);
+        el.miniPlayer.classList.toggle('swiping-right', diffX > 15);
+      }
+    }, { passive: true });
+
+    el.miniPlayer.addEventListener('touchend', (e) => {
+      const touchEndX = e.changedTouches[0]?.clientX || touchStartX;
+      const touchEndY = e.changedTouches[0]?.clientY || touchStartY;
+      const diffX = touchEndX - touchStartX;
+      const diffY = touchEndY - touchStartY;
+      const elapsed = performance.now() - touchStartTime;
+
+      el.miniPlayer.style.transform = '';
+      el.miniPlayer.classList.remove('swiping-left', 'swiping-right');
+
+      if (isSwiping) {
+        if (diffX < -40 || (diffX < -25 && elapsed < 300)) {
+          // Swipe Left -> Skip to Next Track
+          if (typeof navigator.vibrate === 'function') navigator.vibrate(20);
+          player.next();
+          showToast('⏭️ Next Track', 'info');
+        } else if (diffX > 40 || (diffX > 25 && elapsed < 300)) {
+          // Swipe Right -> Skip to Previous Track
+          if (typeof navigator.vibrate === 'function') navigator.vibrate(20);
+          player.previous(true);
+          showToast('⏮️ Previous Track', 'info');
+        }
+      } else if (diffY < -40) {
+        // Swipe Up -> Expand Fullscreen Player
+        openNowPlayingSheet();
+      }
+    }, { passive: true });
+  }
+
+  // 2. Fullscreen Sheet Drag-to-Dismiss Gesture
+  const sheetDragHandle = document.getElementById('sheet-drag-handle');
+  const sheetHeaderBar = document.querySelector('.sheet-header-bar');
+  let sheetDragStartY = 0;
+  let isDraggingSheet = false;
+
+  function initSheetDragGesture(targetElement) {
+    if (!targetElement || !el.sheet) return;
+
+    targetElement.addEventListener('touchstart', (e) => {
+      if (e.touches.length !== 1) return;
+      sheetDragStartY = e.touches[0].clientY;
+      isDraggingSheet = true;
+      el.sheet.style.transition = 'none';
+    }, { passive: true });
+
+    targetElement.addEventListener('touchmove', (e) => {
+      if (!isDraggingSheet || e.touches.length !== 1) return;
+      const currentY = e.touches[0].clientY;
+      const diffY = currentY - sheetDragStartY;
+
+      if (diffY > 0) {
+        el.sheet.style.transform = `translateY(${diffY}px)`;
+      }
+    }, { passive: true });
+
+    targetElement.addEventListener('touchend', (e) => {
+      if (!isDraggingSheet) return;
+      isDraggingSheet = false;
+      const endY = e.changedTouches[0]?.clientY || sheetDragStartY;
+      const diffY = endY - sheetDragStartY;
+
+      if (diffY > 90) {
+        closeNowPlayingSheet();
+        setTimeout(() => {
+          if (el.sheet) {
+            el.sheet.style.transform = '';
+            el.sheet.style.transition = '';
+          }
+        }, 300);
+      } else {
+        el.sheet.style.transition = 'transform 0.22s cubic-bezier(0.16, 1, 0.3, 1)';
+        el.sheet.style.transform = 'translateY(0)';
+        setTimeout(() => {
+          if (el.sheet) el.sheet.style.transition = '';
+        }, 250);
+      }
+    }, { passive: true });
+  }
+
+  initSheetDragGesture(sheetDragHandle);
+  initSheetDragGesture(sheetHeaderBar);
 
   // Escape key closes open modal or expanded player
   document.addEventListener('keydown', (e) => {
@@ -3543,25 +3664,112 @@ async function initApp() {
       e.preventDefault();
       player.next();
     }
-    // 3. ArrowLeft: Seek backward 5 seconds ("Scroll music back")
-    else if (e.key === 'ArrowLeft') {
+    // 3. ArrowLeft or 'j': Seek backward 5 seconds
+    else if (e.key === 'ArrowLeft' || e.key.toLowerCase() === 'j') {
       e.preventDefault();
       const dur = getSafeDuration();
       if (dur > 0) {
         const cur = (typeof player.getCurrentTime === 'function') ? player.getCurrentTime() : (player.currentTime || 0);
         player.seekTo(cur - 5);
+        showToast('⏪ -5s', 'info');
       }
     }
-    // 4. ArrowRight: Seek forward 5 seconds ("Scroll music forward")
-    else if (e.key === 'ArrowRight') {
+    // 4. ArrowRight or 'l' (without shift): Seek forward 5 seconds
+    else if (e.key === 'ArrowRight' || (e.key.toLowerCase() === 'l' && !e.shiftKey)) {
       e.preventDefault();
       const dur = getSafeDuration();
       if (dur > 0) {
         const cur = (typeof player.getCurrentTime === 'function') ? player.getCurrentTime() : (player.currentTime || 0);
         player.seekTo(cur + 5);
+        showToast('⏩ +5s', 'info');
       }
     }
+    // 5. ArrowUp: Volume Up 5%
+    else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      const nextVol = Math.min(100, Math.round((player.volume || 80) + 5));
+      player.setVolume(nextVol);
+      if (el.desktopVolumeSlider) el.desktopVolumeSlider.value = nextVol;
+      showToast(`🔊 Volume: ${nextVol}%`, 'info');
+    }
+    // 6. ArrowDown: Volume Down 5%
+    else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      const nextVol = Math.max(0, Math.round((player.volume || 80) - 5));
+      player.setVolume(nextVol);
+      if (el.desktopVolumeSlider) el.desktopVolumeSlider.value = nextVol;
+      showToast(`🔉 Volume: ${nextVol}%`, 'info');
+    }
+    // 7. 'm': Toggle Mute
+    else if (e.key.toLowerCase() === 'm' && !e.ctrlKey && !e.metaKey) {
+      e.preventDefault();
+      const isMuted = player.toggleMute();
+      showToast(isMuted ? '🔇 Audio Muted' : `🔊 Unmuted (${player.volume}%)`, 'info');
+    }
+    // 8. 'f': Toggle Fullscreen Player Sheet
+    else if (e.key.toLowerCase() === 'f' && !e.ctrlKey && !e.metaKey) {
+      e.preventDefault();
+      if (el.sheet && el.sheet.classList.contains('active')) {
+        closeNowPlayingSheet();
+      } else {
+        openNowPlayingSheet();
+      }
+    }
+    // 9. Shift + 'l': Like / Unlike Current Track
+    else if (e.shiftKey && e.key.toLowerCase() === 'l') {
+      e.preventDefault();
+      if (typeof toggleCurrentTrackLike === 'function') {
+        toggleCurrentTrackLike();
+      }
+    }
+    // 10. '?': Toggle Keyboard Shortcuts Cheatsheet
+    else if (e.key === '?' || (e.shiftKey && e.key === '/')) {
+      e.preventDefault();
+      toggleShortcutsModal();
+    }
   });
+
+  // Keyboard Shortcuts Modal Logic
+  const shortcutsModal = document.getElementById('shortcuts-modal');
+  const btnCloseShortcuts = document.getElementById('btn-close-shortcuts');
+
+  function openShortcutsModal() {
+    if (shortcutsModal) shortcutsModal.style.display = 'flex';
+  }
+
+  function closeShortcutsModal() {
+    if (shortcutsModal) shortcutsModal.style.display = 'none';
+  }
+
+  function toggleShortcutsModal() {
+    if (!shortcutsModal) return;
+    if (shortcutsModal.style.display === 'flex') {
+      closeShortcutsModal();
+    } else {
+      openShortcutsModal();
+    }
+  }
+
+  if (btnCloseShortcuts) {
+    btnCloseShortcuts.addEventListener('click', closeShortcutsModal);
+  }
+  if (shortcutsModal) {
+    shortcutsModal.addEventListener('click', (e) => {
+      if (e.target === shortcutsModal) closeShortcutsModal();
+    });
+  }
+  window.openShortcutsModal = openShortcutsModal;
+
+  // Smart Infinite Autoplay Toggle in Queue Modal
+  const toggleInfiniteAutoplay = document.getElementById('toggle-infinite-autoplay');
+  if (toggleInfiniteAutoplay) {
+    toggleInfiniteAutoplay.checked = player.infiniteAutoplay !== false;
+    toggleInfiniteAutoplay.addEventListener('change', (e) => {
+      const isEnabled = e.target.checked;
+      player.setInfiniteAutoplay(isEnabled);
+      showToast(isEnabled ? '♾️ Smart Autoplay enabled (Infinite Flow)' : 'Smart Autoplay disabled', 'info');
+    });
+  }
 
   /* ==========================================================================
      Create Playlist Modal Logic

@@ -73,7 +73,7 @@
     right: 8px !important;
     width: auto !important;
     max-width: calc(100vw - 16px) !important;
-    z-index: 85 !important;
+    z-index: 200 !important;
     box-sizing: border-box !important;
     transform: none !important;
   }
@@ -563,6 +563,7 @@
     left: 0 !important;
     right: 0 !important;
     border-radius: 0 !important;
+    z-index: 75 !important;
   }
 
   .view-loader-bars {
@@ -804,7 +805,7 @@
     grid-template-columns: 280px 1fr 280px !important;
     align-items: center !important;
     padding: 0 28px !important;
-    z-index: 50 !important;
+    z-index: 200 !important;
     cursor: default !important;
     box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
   }
