@@ -23,7 +23,17 @@ const DbManager = {
             autoRefreshToken: false
           },
           accessToken: async () => {
-            // Use Supabase publishable/anon key for PostgREST authorization
+            try {
+              if (typeof AuthManager !== 'undefined' && !AuthManager.isGuest()) {
+                const token = await AuthManager.getIdToken();
+                if (token && token.length > 20) {
+                  return token;
+                }
+              }
+            } catch (err) {
+              console.warn('[DbManager] Token retrieval fallback:', err);
+            }
+            // Fallback to Supabase publishable/anon key for public/read-only requests
             return EmberConfig.SUPABASE.anonKey;
           }
         }

@@ -461,6 +461,37 @@ const YouTubeAPI = {
   // Formatting & Internal Helpers
   // --------------------------------------------------------------------------
   async _ytClientFetch(endpoint, params) {
+    // 1. Prioritize Server-Side Proxy (Keeps API keys private and hidden from DevTools)
+    if (endpoint === 'search' && params.q) {
+      try {
+        const proxyParams = new URLSearchParams({
+          q: params.q,
+          type: params.type || 'video'
+        });
+        if (params.pageToken) proxyParams.set('pageToken', params.pageToken);
+        const proxyRes = await fetch(`/api/youtube/search?${proxyParams.toString()}`);
+        if (proxyRes.ok) {
+          const data = await proxyRes.json();
+          if (data && data.success && Array.isArray(data.items)) {
+            return data;
+          }
+        }
+      } catch (_) {}
+    } else if (endpoint === 'playlistItems' && params.playlistId) {
+      try {
+        const proxyParams = new URLSearchParams({ id: params.playlistId });
+        if (params.pageToken) proxyParams.set('pageToken', params.pageToken);
+        const proxyRes = await fetch(`/api/youtube/playlist?${proxyParams.toString()}`);
+        if (proxyRes.ok) {
+          const data = await proxyRes.json();
+          if (data && data.success && Array.isArray(data.items)) {
+            return data;
+          }
+        }
+      } catch (_) {}
+    }
+
+    // 2. Client-side direct fallback
     const key = this.getApiKey();
     const queryParams = new URLSearchParams({ ...params, key });
     const res = await fetch(`${this.BASE_URL}/${endpoint}?${queryParams.toString()}`);

@@ -116,18 +116,18 @@ CREATE POLICY "Profiles are readable by authenticated users"
 DROP POLICY IF EXISTS "Users can insert own profile" ON public.profiles;
 CREATE POLICY "Users can insert own profile"
   ON public.profiles FOR INSERT
-  WITH CHECK (auth.firebase_uid() = id OR auth.role() = 'anon');
+  WITH CHECK (auth.firebase_uid() = id);
 
 DROP POLICY IF EXISTS "Users can update own profile" ON public.profiles;
 CREATE POLICY "Users can update own profile"
   ON public.profiles FOR UPDATE
-  USING (auth.firebase_uid() = id OR auth.role() = 'anon')
-  WITH CHECK (auth.firebase_uid() = id OR auth.role() = 'anon');
+  USING (auth.firebase_uid() = id)
+  WITH CHECK (auth.firebase_uid() = id);
 
 DROP POLICY IF EXISTS "Users can delete own profile" ON public.profiles;
 CREATE POLICY "Users can delete own profile"
   ON public.profiles FOR DELETE
-  USING (auth.firebase_uid() = id OR auth.role() = 'anon');
+  USING (auth.firebase_uid() = id);
 
 -- ------------------------------------------------------------------------------
 -- User Preferences Policies
@@ -135,8 +135,8 @@ CREATE POLICY "Users can delete own profile"
 DROP POLICY IF EXISTS "Users can manage own preferences" ON public.user_preferences;
 CREATE POLICY "Users can manage own preferences"
   ON public.user_preferences FOR ALL
-  USING (auth.firebase_uid() = user_id OR auth.role() = 'anon')
-  WITH CHECK (auth.firebase_uid() = user_id OR auth.role() = 'anon');
+  USING (auth.firebase_uid() = user_id)
+  WITH CHECK (auth.firebase_uid() = user_id);
 
 -- ------------------------------------------------------------------------------
 -- Liked Songs Policies
@@ -144,8 +144,8 @@ CREATE POLICY "Users can manage own preferences"
 DROP POLICY IF EXISTS "Users can manage own liked songs" ON public.liked_songs;
 CREATE POLICY "Users can manage own liked songs"
   ON public.liked_songs FOR ALL
-  USING (auth.firebase_uid() = user_id OR auth.role() = 'anon')
-  WITH CHECK (auth.firebase_uid() = user_id OR auth.role() = 'anon');
+  USING (auth.firebase_uid() = user_id)
+  WITH CHECK (auth.firebase_uid() = user_id);
 
 -- ------------------------------------------------------------------------------
 -- Listening History Policies
@@ -153,17 +153,17 @@ CREATE POLICY "Users can manage own liked songs"
 DROP POLICY IF EXISTS "Users can read own listening history" ON public.listening_history;
 CREATE POLICY "Users can read own listening history"
   ON public.listening_history FOR SELECT
-  USING (auth.firebase_uid() = user_id OR auth.role() = 'anon');
+  USING (auth.firebase_uid() = user_id);
 
 DROP POLICY IF EXISTS "Users can insert own listening history" ON public.listening_history;
 CREATE POLICY "Users can insert own listening history"
   ON public.listening_history FOR INSERT
-  WITH CHECK (auth.firebase_uid() = user_id OR auth.role() = 'anon');
+  WITH CHECK (auth.firebase_uid() = user_id);
 
 DROP POLICY IF EXISTS "Users can delete own listening history" ON public.listening_history;
 CREATE POLICY "Users can delete own listening history"
   ON public.listening_history FOR DELETE
-  USING (auth.firebase_uid() = user_id OR auth.role() = 'anon');
+  USING (auth.firebase_uid() = user_id);
 
 -- ------------------------------------------------------------------------------
 -- Playlists Policies
@@ -171,8 +171,8 @@ CREATE POLICY "Users can delete own listening history"
 DROP POLICY IF EXISTS "Users can manage own playlists" ON public.playlists;
 CREATE POLICY "Users can manage own playlists"
   ON public.playlists FOR ALL
-  USING (auth.firebase_uid() = user_id OR auth.role() = 'anon')
-  WITH CHECK (auth.firebase_uid() = user_id OR auth.role() = 'anon');
+  USING (auth.firebase_uid() = user_id)
+  WITH CHECK (auth.firebase_uid() = user_id);
 
 -- ------------------------------------------------------------------------------
 -- Playlist Songs Policies (Depends on parent playlist ownership)
@@ -184,7 +184,7 @@ CREATE POLICY "Users can view songs in own playlists"
     EXISTS (
       SELECT 1 FROM public.playlists
       WHERE public.playlists.id = public.playlist_songs.playlist_id
-        AND (public.playlists.user_id = auth.firebase_uid() OR auth.role() = 'anon')
+        AND public.playlists.user_id = auth.firebase_uid()
     )
   );
 
@@ -195,7 +195,7 @@ CREATE POLICY "Users can add songs to own playlists"
     EXISTS (
       SELECT 1 FROM public.playlists
       WHERE public.playlists.id = public.playlist_songs.playlist_id
-        AND (public.playlists.user_id = auth.firebase_uid() OR auth.role() = 'anon')
+        AND public.playlists.user_id = auth.firebase_uid()
     )
   );
 
@@ -206,14 +206,14 @@ CREATE POLICY "Users can update songs in own playlists"
     EXISTS (
       SELECT 1 FROM public.playlists
       WHERE public.playlists.id = public.playlist_songs.playlist_id
-        AND (public.playlists.user_id = auth.firebase_uid() OR auth.role() = 'anon')
+        AND public.playlists.user_id = auth.firebase_uid()
     )
   )
   WITH CHECK (
     EXISTS (
       SELECT 1 FROM public.playlists
       WHERE public.playlists.id = public.playlist_songs.playlist_id
-        AND (public.playlists.user_id = auth.firebase_uid() OR auth.role() = 'anon')
+        AND public.playlists.user_id = auth.firebase_uid()
     )
   );
 
@@ -224,7 +224,7 @@ CREATE POLICY "Users can remove songs from own playlists"
     EXISTS (
       SELECT 1 FROM public.playlists
       WHERE public.playlists.id = public.playlist_songs.playlist_id
-        AND (public.playlists.user_id = auth.firebase_uid() OR auth.role() = 'anon')
+        AND public.playlists.user_id = auth.firebase_uid()
     )
   );
 
@@ -245,20 +245,20 @@ ALTER TABLE public.search_history ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Users can read own search history" ON public.search_history;
 CREATE POLICY "Users can read own search history"
   ON public.search_history FOR SELECT
-  USING (auth.firebase_uid() = user_id OR auth.role() = 'anon');
+  USING (auth.firebase_uid() = user_id);
 
 DROP POLICY IF EXISTS "Users can insert own search history" ON public.search_history;
 CREATE POLICY "Users can insert own search history"
   ON public.search_history FOR INSERT
-  WITH CHECK (auth.firebase_uid() = user_id OR auth.role() = 'anon');
+  WITH CHECK (auth.firebase_uid() = user_id);
 
 DROP POLICY IF EXISTS "Users can update own search history" ON public.search_history;
 CREATE POLICY "Users can update own search history"
   ON public.search_history FOR UPDATE
-  USING (auth.firebase_uid() = user_id OR auth.role() = 'anon')
-  WITH CHECK (auth.firebase_uid() = user_id OR auth.role() = 'anon');
+  USING (auth.firebase_uid() = user_id)
+  WITH CHECK (auth.firebase_uid() = user_id);
 
 DROP POLICY IF EXISTS "Users can delete own search history" ON public.search_history;
 CREATE POLICY "Users can delete own search history"
   ON public.search_history FOR DELETE
-  USING (auth.firebase_uid() = user_id OR auth.role() = 'anon');
+  USING (auth.firebase_uid() = user_id);

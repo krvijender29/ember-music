@@ -18,10 +18,46 @@ import sys
 import time
 import concurrent.futures
 import ssl
+import threading
 
 SSL_CTX = ssl._create_unverified_context()
 
 SAAVN_API_BASE = "https://www.jiosaavn.com/api.php"
+
+# Allowed Origin Patterns for CORS
+CUSTOM_ALLOWED_ORIGINS = [o.strip() for o in os.environ.get("ALLOWED_ORIGINS", "").split(",") if o.strip()]
+ALLOWED_ORIGIN_PATTERNS = [
+    re.compile(r"^https?://localhost(:\d+)?$"),
+    re.compile(r"^https?://127\.0\.0\.1(:\d+)?$"),
+    re.compile(r"^https?://0\.0\.0\.0(:\d+)?$"),
+    re.compile(r"^https://[a-zA-Z0-9\-_]+\.vercel\.app$")
+]
+
+def is_allowed_origin(origin):
+    if not origin:
+        return True
+    if origin in CUSTOM_ALLOWED_ORIGINS:
+        return True
+    return any(p.match(origin) for p in ALLOWED_ORIGIN_PATTERNS)
+
+# Sliding Window Rate Limiter
+RATE_LIMIT_MAX = int(os.environ.get("RATE_LIMIT_MAX", "100"))
+RATE_LIMIT_WINDOW = 60
+RATE_LIMIT_STORE = {}
+RATE_LIMIT_LOCK = threading.Lock()
+
+def check_rate_limit(client_ip):
+    now = time.time()
+    with RATE_LIMIT_LOCK:
+        timestamps = RATE_LIMIT_STORE.get(client_ip, [])
+        timestamps = [t for t in timestamps if now - t < RATE_LIMIT_WINDOW]
+        if len(timestamps) >= RATE_LIMIT_MAX:
+            RATE_LIMIT_STORE[client_ip] = timestamps
+            retry_after = max(1, int(RATE_LIMIT_WINDOW - (now - timestamps[0])))
+            return False, retry_after
+        timestamps.append(now)
+        RATE_LIMIT_STORE[client_ip] = timestamps
+        return True, 0
 
 # In-memory search cache (12-hour TTL)
 SEARCH_CACHE = {}
@@ -488,9 +524,19 @@ def fetch_spotify_playlist(input_str):
 # ==============================================================================
 class handler(BaseHTTPRequestHandler):
     def end_headers(self):
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type, Range")
+        origin = self.headers.get("Origin")
+        if is_allowed_origin(origin):
+            self.send_header("Access-Control-Allow-Origin", origin if origin else "*")
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type, Range, Authorization, X-Requested-With")
+            self.send_header("Access-Control-Allow-Credentials", "true")
+            self.send_header("Vary", "Origin")
+
+        # Security Hardening Headers
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "SAMEORIGIN")
+        self.send_header("Referrer-Policy", "strict-origin-when-cross-origin")
+        self.send_header("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()")
         super().end_headers()
 
     def do_OPTIONS(self):
@@ -501,6 +547,24 @@ class handler(BaseHTTPRequestHandler):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path.rstrip('/')
         params = urllib.parse.parse_qs(parsed.query)
+
+        # Rate Limit check for /api/ routes
+        if path.startswith("/api"):
+            client_ip = self.headers.get("x-forwarded-for", "").split(",")[0].strip() or (self.client_address[0] if self.client_address else "127.0.0.1")
+            allowed, retry_after = check_rate_limit(client_ip)
+            if not allowed:
+                body = json.dumps({
+                    "success": False,
+                    "error": "Rate limit exceeded. Too many requests. Please wait a moment.",
+                    "retry_after": retry_after
+                }).encode("utf-8")
+                self.send_response(429)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Content-Length", str(len(body)))
+                self.send_header("Retry-After", str(retry_after))
+                self.end_headers()
+                self.wfile.write(body)
+                return
 
         # ----------------------------------------------------------------------
         # Route 1: /api/suggestions?q=query
@@ -843,6 +907,92 @@ class handler(BaseHTTPRequestHandler):
                 self.send_json({"success": True, "playlist": playlist_data, "results": playlist_data.get("tracks", [])})
             else:
                 self.send_json({"success": False, "error": "Failed to parse Spotify playlist. Ensure it is public."}, status=404)
+            return
+
+        # ----------------------------------------------------------------------
+        # Route 9: /api/youtube/search?q=query&type=video|playlist&pageToken=...
+        # Server-side YouTube API proxy (protects API keys from client exposure)
+        # ----------------------------------------------------------------------
+        if path == "/api/youtube/search" or path.endswith("/youtube/search"):
+            query = params.get("q", [""])[0].strip()
+            item_type = params.get("type", ["video"])[0].strip()
+            page_token = params.get("pageToken", [""])[0].strip()
+            api_key = os.environ.get("YOUTUBE_API_KEY", "AIzaSyBRrPickOQtOYJUh9bXNzMjIJuBIqZwCpM")
+
+            if not query:
+                self.send_json({"success": False, "items": [], "error": "Query required"})
+                return
+
+            yt_cache_key = f"yt::search::{query.lower()}::{item_type}::{page_token}"
+            if yt_cache_key in SEARCH_CACHE and not page_token:
+                c_time, c_data = SEARCH_CACHE[yt_cache_key]
+                if time.time() - c_time < 3600:
+                    self.send_json(c_data)
+                    return
+
+            try:
+                enc_q = urllib.parse.quote(query)
+                url = (
+                    f"https://www.googleapis.com/youtube/v3/search"
+                    f"?part=snippet&q={enc_q}&type={item_type}&maxResults=25&key={api_key}"
+                )
+                if page_token:
+                    url += f"&pageToken={page_token}"
+
+                req = urllib.request.Request(url, headers={"User-Agent": "EmberMusicServer/2.0"})
+                with urllib.request.urlopen(req, timeout=6, context=SSL_CTX) as resp:
+                    data = json.loads(resp.read().decode("utf-8"))
+                    result = {
+                        "success": True,
+                        "nextPageToken": data.get("nextPageToken"),
+                        "items": data.get("items", [])
+                    }
+                    SEARCH_CACHE[yt_cache_key] = (time.time(), result)
+                    self.send_json(result)
+            except Exception as e:
+                self.send_json({"success": False, "items": [], "error": str(e)}, status=500)
+            return
+
+        # ----------------------------------------------------------------------
+        # Route 10: /api/youtube/playlist?id=playlistId
+        # Server-side YouTube Playlist Items proxy
+        # ----------------------------------------------------------------------
+        if path == "/api/youtube/playlist" or path.endswith("/youtube/playlist"):
+            pl_id = params.get("id", [""])[0].strip()
+            page_token = params.get("pageToken", [""])[0].strip()
+            api_key = os.environ.get("YOUTUBE_API_KEY", "AIzaSyBRrPickOQtOYJUh9bXNzMjIJuBIqZwCpM")
+
+            if not pl_id:
+                self.send_json({"success": False, "items": [], "error": "Playlist ID required"})
+                return
+
+            pl_cache_key = f"yt::pl::{pl_id}::{page_token}"
+            if pl_cache_key in SEARCH_CACHE:
+                c_time, c_data = SEARCH_CACHE[pl_cache_key]
+                if time.time() - c_time < 3600:
+                    self.send_json(c_data)
+                    return
+
+            try:
+                url = (
+                    f"https://www.googleapis.com/youtube/v3/playlistItems"
+                    f"?part=snippet,contentDetails&playlistId={pl_id}&maxResults=50&key={api_key}"
+                )
+                if page_token:
+                    url += f"&pageToken={page_token}"
+
+                req = urllib.request.Request(url, headers={"User-Agent": "EmberMusicServer/2.0"})
+                with urllib.request.urlopen(req, timeout=6, context=SSL_CTX) as resp:
+                    data = json.loads(resp.read().decode("utf-8"))
+                    result = {
+                        "success": True,
+                        "nextPageToken": data.get("nextPageToken"),
+                        "items": data.get("items", [])
+                    }
+                    SEARCH_CACHE[pl_cache_key] = (time.time(), result)
+                    self.send_json(result)
+            except Exception as e:
+                self.send_json({"success": False, "items": [], "error": str(e)}, status=500)
             return
 
         # Default info
