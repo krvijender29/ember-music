@@ -1119,6 +1119,20 @@
   .sheet-track-titles p {
     font-size: 1.05rem !important;
   }
+
+  .sheet-bottom-actions {
+    margin-top: 8px !important;
+    padding-top: 18px !important;
+  }
+
+  .sheet-action-btns .btn-bottom-icon {
+    min-height: 54px !important;
+    gap: 6px !important;
+  }
+
+  .sheet-action-btns .btn-bottom-icon span {
+    font-size: 0.74rem !important;
+  }
 }
 
 /* ==========================================================================
