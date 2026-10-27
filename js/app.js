@@ -28,6 +28,10 @@ async function initApp() {
     currentLyrics: [],
     currentLyricIndex: -1,
     lyricsTrackKey: '',
+    currentLyricsOffset: 0,
+    isLyricsUserScrolling: false,
+    lyricsUserScrollTimeout: null,
+    lyricsRafId: null,
     libraryFilterQuery: ''
   };
   window.state = state;
@@ -91,6 +95,11 @@ async function initApp() {
     lyricsLoadingState: document.getElementById('lyrics-loading-state'),
     lyricsContentList: document.getElementById('lyrics-content-list'),
     lyricsSourceLabel: document.getElementById('lyrics-source-label'),
+    lyricsSyncControls: document.getElementById('lyrics-sync-controls'),
+    btnSyncDelay: document.getElementById('btn-sync-delay'),
+    btnSyncAdvance: document.getElementById('btn-sync-advance'),
+    syncOffsetPill: document.getElementById('sync-offset-pill'),
+    syncOffsetVal: document.getElementById('sync-offset-val'),
 
     // Video Wrapper, Queue Modal & Create Playlist Modal
     ytWrapper: document.getElementById('yt-player-wrapper'),
@@ -3174,6 +3183,14 @@ async function initApp() {
       el.desktopPlayIcon.style.display = isPlaying ? 'none' : 'block';
       el.desktopPauseIcon.style.display = isPlaying ? 'block' : 'none';
     }
+
+    if (state.isLyricsOpen) {
+      if (isPlaying) {
+        startLyricsSyncLoop();
+      } else {
+        stopLyricsSyncLoop();
+      }
+    }
   };
 
   let isScrubbing = false;
@@ -4213,7 +4230,20 @@ async function initApp() {
       e.preventDefault();
       toggleLyricsView();
     }
-    // 13. '?': Toggle Keyboard Shortcuts Cheatsheet
+    // 13. '[' / ']': Calibrate lyric sync offset (-0.5s / +0.5s)
+    else if (e.key === '[' && state.isLyricsOpen) {
+      e.preventDefault();
+      adjustLyricsOffset(-0.5);
+    }
+    else if (e.key === ']' && state.isLyricsOpen) {
+      e.preventDefault();
+      adjustLyricsOffset(0.5);
+    }
+    else if (e.key === '\\' && state.isLyricsOpen) {
+      e.preventDefault();
+      resetLyricsOffset();
+    }
+    // 14. '?': Toggle Keyboard Shortcuts Cheatsheet
     else if (e.key === '?' || (e.shiftKey && e.key === '/')) {
       e.preventDefault();
       toggleShortcutsModal();
@@ -4458,22 +4488,52 @@ async function initApp() {
   window.closeSleepTimerModal = closeSleepTimerModal;
 
   /* ==========================================================================
-     Time-Synced Karaoke Lyrics Module (LRCLIB API)
+     Time-Synced Karaoke Lyrics Module (LRCLIB API with Smart Match & Calibrator)
      ========================================================================== */
-  function cleanTrackTitleForLyrics(title) {
+  function parseTimeStringToSeconds(str) {
+    if (typeof str === 'number') return str;
+    if (!str || typeof str !== 'string') return 0;
+    const parts = str.split(':').map(Number);
+    if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) return parts[0] * 60 + parts[1];
+    if (parts.length === 3 && !isNaN(parts[0]) && !isNaN(parts[1]) && !isNaN(parts[2])) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+    return 0;
+  }
+
+  function cleanTrackTitleForLyrics(title, artist = '') {
     if (!title) return '';
-    return title
-      .replace(/\s*[\(\[](official\s*video|audio|lyrics?|remix|hd|4k|feat\..*|ft\..*)[\)\]]/gi, '')
-      .replace(/\|.*$/g, '')
-      .replace(/-.*$/, '')
-      .trim();
+    let t = title;
+    // Remove (Official Video), [Audio], (feat. ...), (Remix), etc.
+    t = t.replace(/\s*[\(\[](official\s*(music\s*)?video|audio|lyrics?|lyric\s*video|remix|hd|4k|feat\..*|ft\..*|prod\..*)[\)\]]/gi, '');
+    t = t.replace(/\s*\|.*$/g, '');
+
+    // Split "Artist - Title" or "Title - Artist"
+    if (t.includes(' - ')) {
+      const parts = t.split(/\s+-\s+/);
+      if (parts.length >= 2) {
+        const p0 = parts[0].trim();
+        const p1 = parts.slice(1).join(' - ').trim();
+        const art = (artist || '').toLowerCase();
+        if (art && (p0.toLowerCase() === art || p0.toLowerCase().includes(art) || art.includes(p0.toLowerCase()))) {
+          t = p1;
+        } else if (art && (p1.toLowerCase() === art || p1.toLowerCase().includes(art) || art.includes(p1.toLowerCase()))) {
+          t = p0;
+        } else if (/^(remix|acoustic|live|version|edit|instrumental|feat)/i.test(p1)) {
+          t = p0;
+        } else {
+          t = p1;
+        }
+      }
+    }
+
+    t = t.replace(/\s*[\(\[].*?[\)\]]/g, '');
+    return t.trim();
   }
 
   async function fetchSongLyrics(track) {
     if (!track || !track.title) return null;
-    const cleanTitle = cleanTrackTitleForLyrics(track.title);
-    const cleanArtist = cleanArtistName(track.artist || '', track.title);
-    const duration = Math.round(player.duration || track.duration || 180);
+    const cleanArtist = cleanArtistName(track.artist || track.channelTitle || '', track.title);
+    const cleanTitle = cleanTrackTitleForLyrics(track.title, cleanArtist);
+    const targetDur = Math.round(player.duration || track.durationSec || (track.duration ? parseTimeStringToSeconds(track.duration) : 0) || 0);
 
     const cacheKey = `${cleanTitle}:::${cleanArtist}`.toLowerCase();
     if (state.lyricsCache && state.lyricsCache[cacheKey]) {
@@ -4482,19 +4542,72 @@ async function initApp() {
     if (!state.lyricsCache) state.lyricsCache = {};
 
     try {
-      let url = `https://lrclib.net/api/get?track_name=${encodeURIComponent(cleanTitle)}&artist_name=${encodeURIComponent(cleanArtist)}`;
-      if (duration > 0) url += `&duration=${duration}`;
-
-      let res = await fetch(url);
       let data = null;
-      if (res.ok) {
-        data = await res.json();
-      } else {
-        const searchRes = await fetch(`https://lrclib.net/api/search?q=${encodeURIComponent(`${cleanTitle} ${cleanArtist}`.trim())}`);
+
+      // 1. Try exact match query
+      let exactUrl = `https://lrclib.net/api/get?track_name=${encodeURIComponent(cleanTitle)}&artist_name=${encodeURIComponent(cleanArtist)}`;
+      if (targetDur > 0) exactUrl += `&duration=${targetDur}`;
+
+      try {
+        const res = await fetch(exactUrl);
+        if (res.ok) {
+          const json = await res.json();
+          if (json && json.syncedLyrics) {
+            data = json;
+          }
+        }
+      } catch (e) {}
+
+      // 2. Try exact without duration constraint if duration-specific hit missed
+      if (!data && targetDur > 0) {
+        try {
+          const resNoDur = await fetch(`https://lrclib.net/api/get?track_name=${encodeURIComponent(cleanTitle)}&artist_name=${encodeURIComponent(cleanArtist)}`);
+          if (resNoDur.ok) {
+            const json = await resNoDur.json();
+            if (json && json.syncedLyrics) {
+              data = json;
+            }
+          }
+        } catch (e) {}
+      }
+
+      // 3. Fallback: Search API with Intelligent Candidate Scoring (matching duration & synced status)
+      if (!data) {
+        const queryTerm = `${cleanTitle} ${cleanArtist}`.trim();
+        const searchRes = await fetch(`https://lrclib.net/api/search?q=${encodeURIComponent(queryTerm)}`);
         if (searchRes.ok) {
-          const list = await searchRes.json();
-          if (Array.isArray(list) && list.length > 0) {
-            data = list[0];
+          const candidates = await searchRes.json();
+          if (Array.isArray(candidates) && candidates.length > 0) {
+            let bestCandidate = null;
+            let bestScore = -999999;
+
+            for (const c of candidates) {
+              const hasSynced = Boolean(c.syncedLyrics);
+              const cDur = c.duration || 0;
+              const durDiff = (targetDur > 0 && cDur > 0) ? Math.abs(cDur - targetDur) : 0;
+              const cTitle = (c.trackName || '').toLowerCase();
+
+              let score = 0;
+              if (hasSynced) score += 1000;
+              else score -= 400;
+
+              if (targetDur > 0 && cDur > 0) {
+                if (durDiff <= 3) score += 500;
+                else if (durDiff <= 8) score += 250;
+                else if (durDiff <= 15) score += 100;
+                else score -= (durDiff * 10);
+              }
+
+              if (cTitle === cleanTitle.toLowerCase()) score += 200;
+              else if (cTitle.includes(cleanTitle.toLowerCase())) score += 100;
+
+              if (score > bestScore) {
+                bestScore = score;
+                bestCandidate = c;
+              }
+            }
+
+            data = bestCandidate || candidates[0];
           }
         }
       }
@@ -4504,17 +4617,33 @@ async function initApp() {
       let parsed = { isSynced: false, lines: [] };
       if (data.syncedLyrics) {
         const lines = [];
+        let lrcOffset = 0;
         const rawLines = data.syncedLyrics.split('\n');
+
         for (const line of rawLines) {
-          const match = line.match(/^\[(\d{2}):(\d{2}(?:\.\d+)?)\]\s*(.*)$/);
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+
+          // Parse [offset:+/-ms] tag
+          const offsetMatch = trimmed.match(/^\[offset:\s*([+-]?\d+)\]/i);
+          if (offsetMatch) {
+            lrcOffset = parseInt(offsetMatch[1], 10) / 1000;
+            continue;
+          }
+
+          // Parse timestamp [mm:ss.xx]
+          const match = trimmed.match(/^\[(\d{1,2}):(\d{2}(?:\.\d+)?)\]\s*(.*)$/);
           if (match) {
             const mins = parseInt(match[1], 10);
             const secs = parseFloat(match[2]);
-            const time = mins * 60 + secs;
+            const time = Math.max(0, (mins * 60 + secs) + lrcOffset);
             const text = match[3].trim();
             lines.push({ time, text: text || '♪' });
           }
         }
+
+        lines.sort((a, b) => a.time - b.time);
+
         if (lines.length > 0) {
           parsed = { isSynced: true, lines };
         }
@@ -4535,6 +4664,49 @@ async function initApp() {
     }
   }
 
+  function updateSyncOffsetUI() {
+    if (!el.syncOffsetVal) return;
+    const offset = state.currentLyricsOffset || 0;
+    const sign = offset > 0 ? '+' : '';
+    el.syncOffsetVal.textContent = `${sign}${offset.toFixed(1)}s`;
+
+    if (el.syncOffsetPill) {
+      el.syncOffsetPill.classList.toggle('offset-active', offset !== 0);
+      el.syncOffsetPill.title = offset === 0 ? 'In default sync. Tap to reset' : `Current offset: ${sign}${offset.toFixed(1)}s. Tap to reset to 0.0s`;
+    }
+  }
+
+  function adjustLyricsOffset(delta) {
+    if (!player.currentTrack) return;
+    const current = state.currentLyricsOffset || 0;
+    const updated = Math.round((current + delta) * 10) / 10;
+    state.currentLyricsOffset = updated;
+
+    try {
+      localStorage.setItem(`ember_lyrics_offset_${player.currentTrack.id}`, updated.toString());
+    } catch (e) {}
+
+    updateSyncOffsetUI();
+    state.currentLyricIndex = -999;
+    updateActiveLyricLine(player.currentTime || 0);
+
+    const sign = updated > 0 ? '+' : '';
+    showToast(`Lyric sync: ${sign}${updated.toFixed(1)}s`, 'info');
+  }
+
+  function resetLyricsOffset() {
+    if (!player.currentTrack) return;
+    state.currentLyricsOffset = 0;
+    try {
+      localStorage.removeItem(`ember_lyrics_offset_${player.currentTrack.id}`);
+    } catch (e) {}
+
+    updateSyncOffsetUI();
+    state.currentLyricIndex = -999;
+    updateActiveLyricLine(player.currentTime || 0);
+    showToast('Lyric sync reset to 0.0s', 'info');
+  }
+
   async function loadAndRenderLyrics(track) {
     if (!track) return;
     const trackKey = `${track.title}:::${track.artist}`;
@@ -4543,6 +4715,15 @@ async function initApp() {
     state.lyricsTrackKey = trackKey;
     state.currentLyrics = [];
     state.currentLyricIndex = -1;
+
+    // Restore persistent user sync calibration for this track
+    try {
+      const saved = localStorage.getItem(`ember_lyrics_offset_${track.id}`);
+      state.currentLyricsOffset = saved !== null ? parseFloat(saved) : 0;
+    } catch (e) {
+      state.currentLyricsOffset = 0;
+    }
+    updateSyncOffsetUI();
 
     if (el.lyricsLoadingState) el.lyricsLoadingState.style.display = 'flex';
     if (el.lyricsContentList) {
@@ -4576,7 +4757,7 @@ async function initApp() {
     if (el.lyricsContentList) {
       el.lyricsContentList.style.display = 'flex';
       el.lyricsContentList.innerHTML = data.lines.map((l, idx) => `
-        <div class="lyric-line" data-time="${l.time}" data-index="${idx}">
+        <div class="lyric-line upcoming-line" data-time="${l.time}" data-index="${idx}">
           ${escapeHtml(l.text)}
         </div>
       `).join('');
@@ -4594,35 +4775,83 @@ async function initApp() {
 
     if (data.isSynced) {
       updateActiveLyricLine(player.currentTime || 0);
+      if (player.isPlaying) {
+        startLyricsSyncLoop();
+      }
     }
+  }
+
+  function scrollToActiveLyric(activeLineEl) {
+    if (!el.lyricsScrollBox || !activeLineEl) return;
+    const box = el.lyricsScrollBox;
+    const boxRect = box.getBoundingClientRect();
+    const lineRect = activeLineEl.getBoundingClientRect();
+
+    const currentScrollTop = box.scrollTop;
+    const lineTopRelativeToBox = lineRect.top - boxRect.top + currentScrollTop;
+    const targetScroll = lineTopRelativeToBox - (box.clientHeight / 2) + (activeLineEl.clientHeight / 2);
+
+    box.scrollTo({
+      top: Math.max(0, targetScroll),
+      behavior: 'smooth'
+    });
   }
 
   function updateActiveLyricLine(currentTime) {
     if (!state.isLyricsOpen || !state.currentLyrics || state.currentLyrics.length === 0) return;
     const lyrics = state.currentLyrics;
+    const offset = state.currentLyricsOffset || 0;
+    const effectiveTime = currentTime + offset;
 
     let activeIdx = -1;
     for (let i = 0; i < lyrics.length; i++) {
-      if (lyrics[i].time <= currentTime + 0.2) {
+      if (lyrics[i].time <= effectiveTime) {
         activeIdx = i;
       } else {
         break;
       }
     }
 
-    if (activeIdx !== state.currentLyricIndex && activeIdx >= 0) {
+    if (activeIdx !== state.currentLyricIndex) {
       state.currentLyricIndex = activeIdx;
       const allLines = el.lyricsContentList?.querySelectorAll('.lyric-line');
       if (allLines) {
         allLines.forEach((l, idx) => {
           if (idx === activeIdx) {
             l.classList.add('active-line');
-            l.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            l.classList.remove('past-line', 'upcoming-line');
+            if (!state.isLyricsUserScrolling) {
+              scrollToActiveLyric(l);
+            }
+          } else if (activeIdx >= 0 && idx < activeIdx) {
+            l.classList.add('past-line');
+            l.classList.remove('active-line', 'upcoming-line');
           } else {
-            l.classList.remove('active-line');
+            l.classList.add('upcoming-line');
+            l.classList.remove('active-line', 'past-line');
           }
         });
       }
+    }
+  }
+
+  function startLyricsSyncLoop() {
+    stopLyricsSyncLoop();
+    function tick() {
+      if (state.isLyricsOpen && player.isPlaying && state.currentLyrics && state.currentLyrics.length > 0) {
+        updateActiveLyricLine(player.currentTime || 0);
+        state.lyricsRafId = requestAnimationFrame(tick);
+      } else {
+        state.lyricsRafId = null;
+      }
+    }
+    state.lyricsRafId = requestAnimationFrame(tick);
+  }
+
+  function stopLyricsSyncLoop() {
+    if (state.lyricsRafId) {
+      cancelAnimationFrame(state.lyricsRafId);
+      state.lyricsRafId = null;
     }
   }
 
@@ -4648,6 +4877,11 @@ async function initApp() {
       if (player.currentTrack) {
         loadAndRenderLyrics(player.currentTrack);
       }
+      if (player.isPlaying) {
+        startLyricsSyncLoop();
+      }
+    } else {
+      stopLyricsSyncLoop();
     }
   }
 
@@ -4663,7 +4897,43 @@ async function initApp() {
     toggleLyricsView(false);
   });
 
+  // Sync Offset Control Click Triggers
+  el.btnSyncDelay?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    adjustLyricsOffset(-0.5);
+  });
+
+  el.btnSyncAdvance?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    adjustLyricsOffset(0.5);
+  });
+
+  el.syncOffsetPill?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    resetLyricsOffset();
+  });
+
+  // User scrolling detection
+  if (el.lyricsScrollBox) {
+    const onUserScroll = () => {
+      state.isLyricsUserScrolling = true;
+      if (state.lyricsUserScrollTimeout) clearTimeout(state.lyricsUserScrollTimeout);
+      state.lyricsUserScrollTimeout = setTimeout(() => {
+        state.isLyricsUserScrolling = false;
+        const activeEl = el.lyricsContentList?.querySelector('.lyric-line.active-line');
+        if (activeEl) scrollToActiveLyric(activeEl);
+      }, 3500);
+    };
+
+    el.lyricsScrollBox.addEventListener('wheel', onUserScroll, { passive: true });
+    el.lyricsScrollBox.addEventListener('touchmove', onUserScroll, { passive: true });
+  }
+
   window.toggleLyricsMode = toggleLyricsView;
+  window.loadAndRenderLyrics = loadAndRenderLyrics;
+  window.updateActiveLyricLine = updateActiveLyricLine;
+  window.adjustLyricsOffset = adjustLyricsOffset;
+  window.resetLyricsOffset = resetLyricsOffset;
 
   /* ==========================================================================
      Create Playlist Modal Logic

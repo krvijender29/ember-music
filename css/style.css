@@ -3617,19 +3617,79 @@ body.now-playing-open {
   padding-bottom: 10px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   flex-shrink: 0;
+  gap: 8px;
 }
 
 .lyrics-provider-pill {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 0.72rem;
+  font-size: 0.70rem;
   font-weight: 700;
   color: #FFA07A;
   background: rgba(255, 90, 54, 0.12);
   border: 1px solid rgba(255, 90, 54, 0.25);
-  padding: 4px 10px;
+  padding: 4px 8px;
   border-radius: 14px;
+  white-space: nowrap;
+}
+
+/* Lyrics Timing & Sync Calibrator Bar */
+.lyrics-sync-controls {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  padding: 2px 6px;
+}
+
+.btn-sync-adjust {
+  background: transparent;
+  border: none;
+  color: var(--text-gray, #9E9EA4);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.68rem;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 3px 6px;
+  border-radius: 6px;
+  transition: all 0.15s ease;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.btn-sync-adjust:hover {
+  color: #FFFFFF;
+  background: rgba(255, 255, 255, 0.12);
+}
+.btn-sync-adjust:active {
+  transform: scale(0.92);
+  color: #FF5A36;
+}
+
+.sync-offset-pill {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #FFFFFF;
+  padding: 2px 5px;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+  user-select: none;
+  background: rgba(255, 255, 255, 0.06);
+}
+.sync-offset-pill.offset-active {
+  color: #FF5A36;
+  background: rgba(255, 90, 54, 0.18);
+  border: 1px solid rgba(255, 90, 54, 0.35);
+  text-shadow: 0 0 8px rgba(255, 90, 54, 0.6);
+}
+.sync-offset-pill:hover {
+  background: rgba(255, 90, 54, 0.25);
+  color: #FF7A50;
 }
 
 .lyrics-live-dot {
@@ -3659,6 +3719,7 @@ body.now-playing-open {
   cursor: pointer;
   font-size: 14px;
   transition: all 0.2s ease;
+  flex-shrink: 0;
 }
 .btn-close-lyrics:hover {
   background: rgba(255, 255, 255, 0.16);
@@ -3706,24 +3767,34 @@ body.now-playing-open {
 .lyric-line {
   font-size: 1.05rem;
   font-weight: 600;
-  line-height: 1.45;
+  line-height: 1.5;
   color: rgba(255, 255, 255, 0.35);
   cursor: pointer;
-  padding: 6px 12px;
-  border-radius: 10px;
+  padding: 8px 14px;
+  border-radius: 12px;
   transition: all 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
   user-select: none;
+  -webkit-user-select: none;
 }
 .lyric-line:hover {
-  color: rgba(255, 255, 255, 0.8);
+  color: rgba(255, 255, 255, 0.85);
   background: rgba(255, 255, 255, 0.05);
+}
+.lyric-line.past-line {
+  color: rgba(255, 255, 255, 0.55);
+}
+.lyric-line.upcoming-line {
+  color: rgba(255, 255, 255, 0.26);
 }
 .lyric-line.active-line {
   font-size: 1.25rem;
   font-weight: 800;
   color: #FFFFFF;
-  text-shadow: 0 0 16px rgba(255, 90, 54, 0.7), 0 0 32px rgba(255, 90, 54, 0.35);
+  text-shadow: 0 0 16px rgba(255, 90, 54, 0.75), 0 0 32px rgba(255, 90, 54, 0.35);
   transform: scale(1.05);
+  background: rgba(255, 90, 54, 0.1);
+  border-left: 3px solid #FF5A36;
+  border-right: 3px solid #FF5A36;
 }
 
 /* ==========================================================================

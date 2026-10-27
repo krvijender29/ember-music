@@ -338,6 +338,13 @@
                     <span class="lyrics-live-dot"></span>
                     <span id="lyrics-source-label">Synced Lyrics (LRCLIB)</span>
                   </div>
+                  <div class="lyrics-sync-controls" id="lyrics-sync-controls" title="Fine-tune lyric sync offset">
+                    <button class="btn-sync-adjust" id="btn-sync-delay" title="Lyrics too fast? Delay (-0.5s)">-0.5s</button>
+                    <span class="sync-offset-pill" id="sync-offset-pill" title="Current sync offset. Tap to reset">
+                      <span id="sync-offset-val">0.0s</span>
+                    </span>
+                    <button class="btn-sync-adjust" id="btn-sync-advance" title="Lyrics too slow? Advance (+0.5s)">+0.5s</button>
+                  </div>
                   <button class="btn-close-lyrics" id="btn-close-lyrics" title="Back to Artwork">✕</button>
                 </div>
                 <div class="lyrics-scroll-box" id="lyrics-scroll-box">
@@ -572,6 +579,7 @@
           <div class="shortcut-row"><span class="shortcut-desc">Like / Unlike Song</span><kbd class="shortcut-key">Shift + L</kbd></div>
           <div class="shortcut-row"><span class="shortcut-desc">Search Catalog</span><kbd class="shortcut-key">Ctrl + K</kbd></div>
           <div class="shortcut-row"><span class="shortcut-desc">Toggle Synced Lyrics</span><kbd class="shortcut-key">Y</kbd></div>
+          <div class="shortcut-row"><span class="shortcut-desc">Delay / Advance Lyrics Sync</span><kbd class="shortcut-key">[</kbd> / <kbd class="shortcut-key">]</kbd></div>
           <div class="shortcut-row"><span class="shortcut-desc">Equalizer (EQ)</span><kbd class="shortcut-key">E</kbd></div>
           <div class="shortcut-row"><span class="shortcut-desc">Sleep Timer</span><kbd class="shortcut-key">T</kbd></div>
           <div class="shortcut-row"><span class="shortcut-desc">Close Modal or Sheet</span><kbd class="shortcut-key">Esc</kbd></div>
