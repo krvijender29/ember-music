@@ -1361,6 +1361,83 @@ body::before {
   margin-top: 10px;
 }
 
+.playlist-action-group-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.btn-save-playlist {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  height: 40px;
+  border-radius: 999px;
+  font-family: var(--font-display);
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-white);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  user-select: none;
+}
+
+.btn-save-playlist:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.35);
+  transform: translateY(-1px);
+}
+
+.btn-save-playlist:active {
+  transform: scale(0.96);
+}
+
+.btn-save-playlist.is-saved {
+  background: rgba(255, 90, 54, 0.16);
+  color: #FF5A36;
+  border-color: rgba(255, 90, 54, 0.45);
+  box-shadow: 0 0 16px rgba(255, 90, 54, 0.15);
+}
+
+.btn-save-playlist.is-saved:hover {
+  background: rgba(255, 90, 54, 0.26);
+  border-color: rgba(255, 90, 54, 0.65);
+  box-shadow: 0 0 20px rgba(255, 90, 54, 0.25);
+}
+
+.btn-save-playlist svg {
+  flex-shrink: 0;
+  transition: transform 0.2s ease;
+}
+
+.btn-save-playlist:hover svg {
+  transform: scale(1.1);
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.spin {
+  animation: spin 0.8s linear infinite;
+}
+
+@media (max-width: 480px) {
+  .btn-save-playlist {
+    padding: 7px 13px;
+    font-size: 0.76rem;
+    height: 36px;
+    gap: 6px;
+  }
+}
+
 .btn-follow-playlist {
   padding: 7px 18px;
   border-radius: 20px;

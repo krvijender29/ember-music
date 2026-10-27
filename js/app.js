@@ -242,7 +242,7 @@ async function initApp() {
     const isPlayingThis = player.currentTrack && player.currentTrack.id === track.id;
     const user = AuthManager.getCurrentUser();
     const isLiked = StorageManager.isSongLiked(track.id);
-    const isCustomPlaylistView = state.currentTab === 'playlist';
+    const isCustomPlaylistView = state.currentTab === 'playlist' && Boolean(state.activePlaylistIsCustom);
 
     return `
       <div class="ember-song-row ${isPlayingThis ? 'playing' : ''}" data-track-id="${escapeHtml(track.id)}">
@@ -2073,8 +2073,8 @@ async function initApp() {
         playlist = {
           id: custom.id,
           title: custom.name,
-          subtitle: 'Custom Playlist',
-          cover: 'assets/images/ember_banner.jpg',
+          subtitle: custom.subtitle || 'Custom Playlist',
+          cover: custom.cover || (custom.tracks && custom.tracks[0]?.thumbnail) || 'assets/images/ember_banner.jpg',
           description: custom.description || 'Your personalized collection on Ember.',
           stats: `${(custom.tracks || []).length} songs`
         };
@@ -2082,10 +2082,14 @@ async function initApp() {
       } else {
         // YouTube Music playlist or album collection
         isCustom = false;
-        try {
-          playlistTracks = await YouTubeAPI.getPlaylistTracks(playlistId, 50);
-        } catch (err) {
-          console.warn('Failed to load playlist tracks:', err);
+        if (catalogMeta && Array.isArray(catalogMeta.tracks) && catalogMeta.tracks.length > 0) {
+          playlistTracks = catalogMeta.tracks;
+        } else {
+          try {
+            playlistTracks = await YouTubeAPI.getPlaylistTracks(playlistId, 50);
+          } catch (err) {
+            console.warn('Failed to load playlist tracks:', err);
+          }
         }
 
         if (playlistTracks && playlistTracks.length > 0) {
@@ -2097,14 +2101,33 @@ async function initApp() {
             description: catalogMeta?.description || 'Curated album and playlist collection discovered via YouTube Music.',
             stats: `${playlistTracks.length} songs`
           };
+        } else if (catalogMeta) {
+          playlist = {
+            id: playlistId,
+            title: catalogMeta.title || 'Playlist',
+            subtitle: catalogMeta.subtitle || 'Collection',
+            cover: catalogMeta.cover || catalogMeta.thumbnail || 'assets/images/ember_banner.jpg',
+            description: catalogMeta.description || 'Curated soundscape for your mood.',
+            stats: '0 songs'
+          };
         }
       }
+
+      state.activePlaylistIsCustom = isCustom;
 
       if (!playlist) {
         showToast('Playlist not found', 'warning');
         switchTab('library');
         return;
       }
+
+      // Check if this external playlist is already saved in the user's custom library
+      const allUserPlaylists = StorageManager.getPlaylists() || [];
+      const savedMatch = !isCustom && allUserPlaylists.find(p => 
+        (p.sourcePlaylistId && p.sourcePlaylistId === playlistId) ||
+        (p.name && playlist.title && p.name.trim().toLowerCase() === playlist.title.trim().toLowerCase())
+      );
+      let isAlreadySaved = Boolean(savedMatch);
 
       el.viewport.innerHTML = `
       <!-- Playlist Top Nav Row -->
@@ -2113,7 +2136,7 @@ async function initApp() {
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
         </button>
         <span style="font-size:0.85rem; font-weight:600; color:var(--text-gray); text-transform:uppercase;">Playlist</span>
-        <button class="header-icon-btn" id="btn-playlist-options" title="${isCustom ? 'Rename Playlist' : 'Options'}">
+        <button class="header-icon-btn" id="btn-playlist-options" title="${isCustom ? 'Playlist Options' : 'Options'}">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
         </button>
       </div>
@@ -2134,15 +2157,22 @@ async function initApp() {
         </div>
 
         <div class="playlist-action-bar">
-          <div style="display:flex; align-items:center; gap:12px;">
-            <button class="header-icon-btn" id="btn-share-pl" title="Share">
+          <div class="playlist-action-group-left">
+            <button class="header-icon-btn" id="btn-share-pl" title="Share Playlist">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
             </button>
             ${isCustom ? `
               <button class="header-icon-btn" id="btn-delete-pl" title="Delete Playlist" style="color:#ff5252; transition:opacity 0.2s ease;">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
               </button>
-            ` : ''}
+            ` : `
+              <button class="btn-save-playlist ${isAlreadySaved ? 'is-saved' : ''}" id="btn-save-pl" title="${isAlreadySaved ? 'Saved in Your Library (Click to remove)' : 'Save Playlist to Library as-is'}">
+                ${isAlreadySaved 
+                  ? `<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg><span>In Library</span>`
+                  : `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg><span>+ Save to Library</span>`
+                }
+              </button>
+            `}
           </div>
 
           <button class="btn-big-play-playlist" id="btn-play-all-playlist" title="Play All">
@@ -2171,6 +2201,91 @@ async function initApp() {
       }
     });
 
+    // Save to Library button listener
+    const saveBtn = document.getElementById('btn-save-pl');
+    if (saveBtn) {
+      saveBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+
+        if (saveBtn.classList.contains('is-saved')) {
+          const currentPlaylists = StorageManager.getPlaylists() || [];
+          const match = currentPlaylists.find(p => 
+            (p.sourcePlaylistId && p.sourcePlaylistId === playlistId) ||
+            (p.name && playlist.title && p.name.trim().toLowerCase() === playlist.title.trim().toLowerCase())
+          );
+          if (match) {
+            try {
+              await DbManager.deletePlaylist(match.id);
+            } catch (err) {
+              console.warn('[Ember] Error deleting playlist:', err);
+            }
+            saveBtn.classList.remove('is-saved');
+            saveBtn.title = 'Save Playlist to Library as-is';
+            saveBtn.innerHTML = `
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+              <span>+ Save to Library</span>
+            `;
+            showToast(`Removed "${playlist.title}" from Your Library`, 'info');
+            renderSidebarPlaylists();
+            if (state.currentTab === 'library') renderLibraryView();
+          }
+          return;
+        }
+
+        if (!playlistTracks || playlistTracks.length === 0) {
+          showToast('Cannot save an empty playlist', 'warning');
+          return;
+        }
+
+        const originalHtml = saveBtn.innerHTML;
+        saveBtn.disabled = true;
+        saveBtn.style.opacity = '0.7';
+        saveBtn.innerHTML = `
+          <svg class="spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="10" stroke-opacity="0.25"/><path d="M12 2a10 10 0 0 1 10 10"/></svg>
+          <span>Saving...</span>
+        `;
+
+        try {
+          const user = AuthManager.getCurrentUser();
+          const plCover = playlist.cover || playlistTracks[0]?.thumbnail || 'assets/images/ember_banner.jpg';
+          const plDesc = playlist.description || playlist.subtitle || 'Saved collection';
+
+          // 1. Create the playlist in DB / Storage
+          const created = await DbManager.createPlaylist(
+            user?.uid,
+            playlist.title,
+            plDesc,
+            plCover,
+            playlist.id
+          );
+
+          // 2. Add all tracks as-is
+          if (created && created.id) {
+            await DbManager.addTracksToPlaylist(created.id, playlistTracks);
+          }
+
+          saveBtn.disabled = false;
+          saveBtn.style.opacity = '1';
+          saveBtn.classList.add('is-saved');
+          saveBtn.title = 'Saved in Your Library (Click to remove)';
+          saveBtn.innerHTML = `
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+            <span>In Library</span>
+          `;
+
+          showToast(`Saved "${playlist.title}" to Your Library! (${playlistTracks.length} tracks)`, 'success');
+          renderSidebarPlaylists();
+          if (state.currentTab === 'library') renderLibraryView();
+        } catch (err) {
+          console.error('Error saving playlist to library:', err);
+          saveBtn.disabled = false;
+          saveBtn.style.opacity = '1';
+          saveBtn.innerHTML = originalHtml;
+          showToast('Failed to save playlist. Please try again.', 'warning');
+        }
+      });
+    }
+
     if (isCustom) {
       const deleteBtn = document.getElementById('btn-delete-pl');
       if (deleteBtn) {
@@ -2189,7 +2304,7 @@ async function initApp() {
     if (optionsBtn) {
       optionsBtn.addEventListener('click', async () => {
         if (isCustom) {
-          const newName = prompt('Enter new playlist name:', playlist.title);
+          const newName = prompt('Enter new playlist name (or leave blank to keep):', playlist.title);
           if (newName && newName.trim() && newName.trim() !== playlist.title) {
             await DbManager.renamePlaylist(playlist.id, newName.trim());
             showToast(`Renamed to "${newName.trim()}"`, 'success');
@@ -2197,9 +2312,13 @@ async function initApp() {
             renderSidebarPlaylists();
           }
         } else {
-          if (navigator.clipboard) {
+          // If external playlist, offer to save to library or copy link
+          const saveBtnEl = document.getElementById('btn-save-pl');
+          if (saveBtnEl && !saveBtnEl.classList.contains('is-saved')) {
+            saveBtnEl.click();
+          } else if (navigator.clipboard) {
             navigator.clipboard.writeText(window.location.href);
-            showToast(`Playlist link copied to clipboard!`, 'success');
+            showToast('Playlist link copied to clipboard!', 'success');
           }
         }
       });
@@ -2301,8 +2420,9 @@ async function initApp() {
     if (typeof updateSidebarActiveUI === 'function') updateSidebarActiveUI('library');
     if (typeof updateHeaderSearchUI === 'function') updateHeaderSearchUI('library');
     const user = AuthManager.getCurrentUser();
-    const liked = await DbManager.getLikedSongs(user?.uid);
-    const customPlaylists = await DbManager.getPlaylists(user?.uid);
+    const liked = (await DbManager.getLikedSongs(user?.uid)) || [];
+    let customPlaylists = (await DbManager.getPlaylists(user?.uid)) || [];
+    if (!Array.isArray(customPlaylists)) customPlaylists = [];
     renderSidebarPlaylists();
 
     el.viewport.innerHTML = `
@@ -2344,17 +2464,23 @@ async function initApp() {
 
       <!-- User Custom Playlists -->
       <div id="library-custom-playlists">
-        ${customPlaylists.map(pl => `
-          <div class="ember-song-row" data-playlist-id="${escapeHtml(pl.id)}" style="margin-bottom:8px; cursor:pointer;">
-            <div style="width:44px; height:44px; border-radius:8px; background:var(--bg-elevated); display:flex; align-items:center; justify-content:center; color:var(--text-white); flex-shrink:0;">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+        ${customPlaylists.map(pl => {
+          const coverArt = pl.cover || pl.tracks?.[0]?.thumbnail;
+          return `
+            <div class="ember-song-row" data-playlist-id="${escapeHtml(pl.id)}" style="margin-bottom:8px; cursor:pointer;">
+              <div style="width:44px; height:44px; border-radius:8px; background:var(--bg-elevated); display:flex; align-items:center; justify-content:center; color:var(--text-white); flex-shrink:0; overflow:hidden;">
+                ${coverArt
+                  ? `<img src="${escapeHtml(coverArt)}" style="width:100%; height:100%; object-fit:cover;" alt="${escapeHtml(pl.name)}">`
+                  : `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>`
+                }
+              </div>
+              <div class="song-row-meta">
+                <div class="song-row-title">${escapeHtml(pl.name)}</div>
+                <div class="song-row-artist">${(pl.tracks || []).length} songs • ${pl.sourcePlaylistId ? 'Saved Playlist' : 'By You'}</div>
+              </div>
             </div>
-            <div class="song-row-meta">
-              <div class="song-row-title">${escapeHtml(pl.name)}</div>
-              <div class="song-row-artist">${(pl.tracks || []).length} songs • By You</div>
-            </div>
-          </div>
-        `).join('')}
+          `;
+        }).join('')}
       </div>
     `;
 
@@ -2388,17 +2514,23 @@ async function initApp() {
       if (openCreateBtn) openCreateBtn.style.display = 'flex';
       if (likedRow) likedRow.style.display = 'flex';
       if (customPlaylistsWrap) {
-        customPlaylistsWrap.innerHTML = customPlaylists.map(pl => `
-          <div class="ember-song-row" data-playlist-id="${escapeHtml(pl.id)}" style="margin-bottom:8px; cursor:pointer;">
-            <div style="width:44px; height:44px; border-radius:8px; background:var(--bg-elevated); display:flex; align-items:center; justify-content:center; color:var(--text-white); flex-shrink:0;">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+        customPlaylistsWrap.innerHTML = customPlaylists.map(pl => {
+          const coverArt = pl.cover || pl.tracks?.[0]?.thumbnail;
+          return `
+            <div class="ember-song-row" data-playlist-id="${escapeHtml(pl.id)}" style="margin-bottom:8px; cursor:pointer;">
+              <div style="width:44px; height:44px; border-radius:8px; background:var(--bg-elevated); display:flex; align-items:center; justify-content:center; color:var(--text-white); flex-shrink:0; overflow:hidden;">
+                ${coverArt
+                  ? `<img src="${escapeHtml(coverArt)}" style="width:100%; height:100%; object-fit:cover;" alt="${escapeHtml(pl.name)}">`
+                  : `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>`
+                }
+              </div>
+              <div class="song-row-meta">
+                <div class="song-row-title">${escapeHtml(pl.name)}</div>
+                <div class="song-row-artist">${(pl.tracks || []).length} songs • ${pl.sourcePlaylistId ? 'Saved Playlist' : 'By You'}</div>
+              </div>
             </div>
-            <div class="song-row-meta">
-              <div class="song-row-title">${escapeHtml(pl.name)}</div>
-              <div class="song-row-artist">${(pl.tracks || []).length} songs • By You</div>
-            </div>
-          </div>
-        `).join('');
+          `;
+        }).join('');
         customPlaylistsWrap.querySelectorAll('.ember-song-row').forEach(row => {
           row.addEventListener('click', () => openPlaylistView(row.dataset.playlistId));
         });
@@ -2726,6 +2858,8 @@ async function initApp() {
     });
   }
   window.switchTab = switchTab;
+  window.openPlaylistView = openPlaylistView;
+  window.renderLibraryView = renderLibraryView;
 
   // Bind Bottom Nav Tabs
   el.navTabs.forEach(tab => {

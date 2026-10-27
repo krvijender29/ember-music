@@ -589,3 +589,5 @@ const YouTubeAPI = {
     );
   }
 };
+
+window.YouTubeAPI = YouTubeAPI;

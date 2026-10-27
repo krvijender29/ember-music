@@ -424,61 +424,79 @@ const DbManager = {
       return StorageManager.getPlaylists();
     }
 
-    const mapped = (playlists || []).map(pl => ({
-      id: pl.id,
-      name: pl.name,
-      description: pl.description || '',
-      createdAt: pl.created_at,
-      tracks: (pl.playlist_songs || [])
-        .sort((a, b) => (a.position || 0) - (b.position || 0))
-        .map(s => ({
-          id: s.song_id,
-          title: s.title,
-          artist: s.artist,
-          channelTitle: s.artist,
-          thumbnail: s.artwork_url
-        }))
-    }));
+    const localPlaylists = StorageManager.getPlaylists() || [];
+    const mapped = (playlists || []).map(pl => {
+      const cached = localPlaylists.find(c => c.id === pl.id);
+      return {
+        id: pl.id,
+        name: pl.name,
+        description: pl.description || '',
+        cover: cached?.cover || '',
+        sourcePlaylistId: cached?.sourcePlaylistId || null,
+        createdAt: pl.created_at,
+        tracks: (pl.playlist_songs || [])
+          .sort((a, b) => (a.position || 0) - (b.position || 0))
+          .map(s => ({
+            id: s.song_id,
+            title: s.title,
+            artist: s.artist,
+            channelTitle: s.artist,
+            thumbnail: s.artwork_url
+          }))
+      };
+    });
+
+    // Merge any locally created playlists that have not synced to Supabase yet
+    const supabaseIds = new Set((playlists || []).map(p => p.id));
+    const localOnly = localPlaylists.filter(p => !supabaseIds.has(p.id));
+    const combined = [...mapped, ...localOnly];
 
     // Cache on system/mobile for instant & offline access
-    StorageManager.setPlaylists(mapped);
-    return mapped;
+    StorageManager.setPlaylists(combined);
+    return combined;
   },
 
-  async createPlaylist(userId, name, description = '') {
+  async createPlaylist(userId, name, description = '', cover = '', sourcePlaylistId = null) {
     if (!userId) {
-      return StorageManager.createPlaylist(name, description);
+      return StorageManager.createPlaylist(name, description, cover, sourcePlaylistId);
     }
 
     const client = this.getClient();
     if (!client) {
-      return StorageManager.createPlaylist(name, description);
+      return StorageManager.createPlaylist(name, description, cover, sourcePlaylistId);
     }
 
-    const { data, error } = await client
-      .from('playlists')
-      .insert({
-        user_id: userId,
-        name,
-        description,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      })
-      .select()
-      .single();
+    try {
+      const { data, error } = await client
+        .from('playlists')
+        .insert({
+          user_id: userId,
+          name,
+          description,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .select()
+        .single();
 
-    if (error) throw error;
-    const newPl = {
-      id: data.id,
-      name: data.name,
-      description: data.description,
-      tracks: [],
-      createdAt: data.created_at
-    };
-    const local = StorageManager.getPlaylists();
-    local.unshift(newPl);
-    StorageManager.setPlaylists(local);
-    return newPl;
+      if (error) throw error;
+      const newPl = {
+        id: data.id,
+        name: data.name,
+        description: data.description,
+        cover: cover || '',
+        sourcePlaylistId: sourcePlaylistId || null,
+        tracks: [],
+        createdAt: data.created_at
+      };
+      const local = StorageManager.getPlaylists();
+      local.unshift(newPl);
+      StorageManager.setPlaylists(local);
+      return newPl;
+    } catch (err) {
+      console.warn('[DbManager] createPlaylist error fallback to local storage:', err);
+      return StorageManager.createPlaylist(name, description, cover, sourcePlaylistId);
+    }
   },
 
   async renamePlaylist(playlistId, newName) {
@@ -506,13 +524,24 @@ const DbManager = {
       return true;
     }
 
-    const { error } = await client
-      .from('playlists')
-      .delete()
-      .eq('id', playlistId);
+    try {
+      // Delete child songs first to honor foreign key constraints
+      await client
+        .from('playlist_songs')
+        .delete()
+        .eq('playlist_id', playlistId);
 
-    if (error) throw error;
-    return true;
+      const { error } = await client
+        .from('playlists')
+        .delete()
+        .eq('id', playlistId);
+
+      if (error) console.warn('[DbManager] deletePlaylist Supabase warning:', error.message);
+      return true;
+    } catch (err) {
+      console.warn('[DbManager] deletePlaylist error (deleted locally):', err);
+      return true;
+    }
   },
 
   async addTrackToPlaylist(playlistId, track) {
@@ -552,6 +581,48 @@ const DbManager = {
       throw error;
     }
     return true;
+  },
+
+  async addTracksToPlaylist(playlistId, tracks) {
+    if (!Array.isArray(tracks) || tracks.length === 0) return true;
+
+    // Update local cache first
+    StorageManager.addTracksToPlaylist(playlistId, tracks);
+
+    const client = this.getClient();
+    if (!client) {
+      return true;
+    }
+
+    try {
+      const { data: songs } = await client
+        .from('playlist_songs')
+        .select('position')
+        .eq('playlist_id', playlistId)
+        .order('position', { ascending: false })
+        .limit(1);
+
+      let startPos = (songs && songs.length > 0) ? (songs[0].position + 1) : 0;
+
+      const records = tracks.map((track, idx) => ({
+        playlist_id: playlistId,
+        song_id: track.id,
+        title: track.title,
+        artist: track.artist || track.channelTitle || 'Ember',
+        artwork_url: track.thumbnail || 'assets/images/ember_banner.jpg',
+        position: startPos + idx
+      }));
+
+      // Insert in chunks of 50 to prevent packet size limits
+      for (let i = 0; i < records.length; i += 50) {
+        const chunk = records.slice(i, i + 50);
+        await client.from('playlist_songs').insert(chunk);
+      }
+      return true;
+    } catch (err) {
+      console.warn('[DbManager] addTracksToPlaylist Supabase warning (saved locally):', err);
+      return true;
+    }
   },
 
   async removeTrackFromPlaylist(playlistId, trackId) {

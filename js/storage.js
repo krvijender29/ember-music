@@ -195,18 +195,40 @@ const StorageManager = {
     }
   },
 
-  createPlaylist(name, description = '') {
+  createPlaylist(name, description = '', cover = '', sourcePlaylistId = null) {
     const playlists = this.getPlaylists();
     const newPlaylist = {
       id: 'pl_' + Date.now(),
       name,
       description,
+      cover: cover || '',
+      sourcePlaylistId: sourcePlaylistId || null,
       tracks: [],
       createdAt: new Date().toISOString()
     };
     playlists.push(newPlaylist);
     localStorage.setItem(this.KEYS.PLAYLISTS, JSON.stringify(playlists));
     return newPlaylist;
+  },
+
+  addTracksToPlaylist(playlistId, tracks) {
+    if (!Array.isArray(tracks) || tracks.length === 0) return true;
+    const playlists = this.getPlaylists();
+    const pl = playlists.find(p => p.id === playlistId);
+    if (pl) {
+      if (!Array.isArray(pl.tracks)) pl.tracks = [];
+      let addedCount = 0;
+      for (const track of tracks) {
+        if (!track || !track.id) continue;
+        if (!pl.tracks.some(t => t.id === track.id)) {
+          pl.tracks.push(track);
+          addedCount++;
+        }
+      }
+      localStorage.setItem(this.KEYS.PLAYLISTS, JSON.stringify(playlists));
+      return addedCount > 0;
+    }
+    return false;
   },
 
   addTrackToPlaylist(playlistId, track) {
