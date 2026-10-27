@@ -3358,14 +3358,40 @@ async function initApp() {
     let isSwiping = false;
     let activePointerId = null;
 
+    function isDesktopViewport() {
+      return window.innerWidth >= 900;
+    }
+
+    function isInteractivePlayerTarget(target) {
+      if (!target || !(target instanceof Element)) return false;
+      return Boolean(
+        target.closest('button') ||
+        target.closest('input') ||
+        target.closest('select') ||
+        target.closest('textarea') ||
+        target.closest('#desktop-volume-slider') ||
+        target.closest('.desktop-volume-wrap') ||
+        target.closest('#desktop-timeline') ||
+        target.closest('.desktop-timeline-bar') ||
+        target.closest('.desktop-timeline-row') ||
+        target.closest('.player-desktop-center') ||
+        target.closest('.player-desktop-right') ||
+        target.closest('#mini-progress-line') ||
+        target.closest('.mini-controls-right')
+      );
+    }
+
     function handleMiniTouchStart(clientX, clientY) {
+      if (isDesktopViewport()) return false;
       startX = clientX;
       startY = clientY;
       startTime = performance.now();
       isSwiping = false;
+      return true;
     }
 
     function handleMiniTouchMove(clientX, clientY) {
+      if (isDesktopViewport()) return;
       const diffX = clientX - startX;
       const diffY = clientY - startY;
 
@@ -3379,6 +3405,12 @@ async function initApp() {
     }
 
     function handleMiniTouchEnd(clientX, clientY) {
+      if (isDesktopViewport()) {
+        el.miniPlayer.style.transform = '';
+        el.miniPlayer.classList.remove('swiping-left', 'swiping-right');
+        isSwiping = false;
+        return;
+      }
       const diffX = clientX - startX;
       const diffY = clientY - startY;
       const elapsed = performance.now() - startTime;
@@ -3411,16 +3443,20 @@ async function initApp() {
 
     // Touch Event Listeners (iOS & Android Mobile Web)
     el.miniPlayer.addEventListener('touchstart', (e) => {
+      if (isDesktopViewport()) return;
       if (e.touches.length !== 1) return;
+      if (isInteractivePlayerTarget(e.target)) return;
       handleMiniTouchStart(e.touches[0].clientX, e.touches[0].clientY);
     }, { passive: true });
 
     el.miniPlayer.addEventListener('touchmove', (e) => {
+      if (isDesktopViewport()) return;
       if (e.touches.length !== 1) return;
       handleMiniTouchMove(e.touches[0].clientX, e.touches[0].clientY);
     }, { passive: true });
 
     el.miniPlayer.addEventListener('touchend', (e) => {
+      if (isDesktopViewport()) return;
       const endX = e.changedTouches[0]?.clientX ?? startX;
       const endY = e.changedTouches[0]?.clientY ?? startY;
       handleMiniTouchEnd(endX, endY);
@@ -3432,12 +3468,17 @@ async function initApp() {
       isSwiping = false;
     }, { passive: true });
 
-    // Pointer Event Listeners (Touchscreens, PWA & Mouse Trackpad)
+    // Pointer Event Listeners (Touchscreens & PWA)
+    // NOTE: Mouse pointers are strictly ignored to prevent volume slider/scrubber/dock conflicts on Desktop.
     el.miniPlayer.addEventListener('pointerdown', (e) => {
-      if (e.target.closest('button') || e.target.closest('#mini-progress-line')) return;
-      activePointerId = e.pointerId;
-      handleMiniTouchStart(e.clientX, e.clientY);
-      try { el.miniPlayer.setPointerCapture(e.pointerId); } catch (_) {}
+      if (isDesktopViewport()) return;
+      if (e.pointerType === 'mouse') return;
+      if (isInteractivePlayerTarget(e.target)) return;
+
+      if (handleMiniTouchStart(e.clientX, e.clientY)) {
+        activePointerId = e.pointerId;
+        try { el.miniPlayer.setPointerCapture(e.pointerId); } catch (_) {}
+      }
     });
 
     el.miniPlayer.addEventListener('pointermove', (e) => {
@@ -3525,7 +3566,8 @@ async function initApp() {
     }, { passive: true });
 
     elem.addEventListener('pointerdown', (e) => {
-      if (e.target.closest('button') || e.target.closest('.sheet-timeline-container')) return;
+      if (e.pointerType === 'mouse') return;
+      if (e.target.closest('button') || e.target.closest('input') || e.target.closest('.sheet-timeline-container')) return;
       if (onDragStart(e.clientY)) {
         activeSheetPointerId = e.pointerId;
         try { elem.setPointerCapture(e.pointerId); } catch (_) {}
@@ -3914,6 +3956,21 @@ async function initApp() {
       const vol = parseInt(e.target.value, 10);
       player.setVolume(vol);
       syncDesktopVolumeIcons(vol === 0 || player.isMuted);
+    });
+
+    ['pointerdown', 'mousedown', 'touchstart', 'pointermove', 'touchmove', 'pointerup', 'touchend'].forEach(evt => {
+      el.desktopVolumeSlider.addEventListener(evt, (e) => {
+        e.stopPropagation();
+      }, { passive: false });
+    });
+  }
+
+  const desktopVolumeWrap = document.querySelector('.desktop-volume-wrap');
+  if (desktopVolumeWrap) {
+    ['pointerdown', 'mousedown', 'touchstart'].forEach(evt => {
+      desktopVolumeWrap.addEventListener(evt, (e) => {
+        e.stopPropagation();
+      });
     });
   }
 
