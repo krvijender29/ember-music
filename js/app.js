@@ -2946,7 +2946,13 @@ async function initApp() {
   window.requestScreenWakeLock = requestScreenWakeLock;
   window.releaseScreenWakeLock = releaseScreenWakeLock;
 
-  el.miniTrackClickArea.addEventListener('click', () => {
+  let wasSwipingMiniRecently = false;
+  el.miniTrackClickArea.addEventListener('click', (e) => {
+    if (wasSwipingMiniRecently) {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
     openNowPlayingSheet();
   });
 
@@ -2955,119 +2961,224 @@ async function initApp() {
   });
 
   /* ==========================================================================
-     Mobile Touch Gestures (Mini Player Swipe & Sheet Drag-to-Dismiss)
+     Mobile Touch & Pointer Gestures (Mini Player Swipe & Sheet Drag-to-Dismiss)
      ========================================================================== */
   // 1. Mini-Player Horizontal Swipe (Next/Previous) & Vertical Swipe Up (Expand)
   if (el.miniPlayer) {
-    let touchStartX = 0;
-    let touchStartY = 0;
-    let touchStartTime = 0;
+    let startX = 0;
+    let startY = 0;
+    let startTime = 0;
     let isSwiping = false;
+    let activePointerId = null;
 
-    el.miniPlayer.addEventListener('touchstart', (e) => {
-      if (e.touches.length !== 1) return;
-      touchStartX = e.touches[0].clientX;
-      touchStartY = e.touches[0].clientY;
-      touchStartTime = performance.now();
+    function handleMiniTouchStart(clientX, clientY) {
+      startX = clientX;
+      startY = clientY;
+      startTime = performance.now();
       isSwiping = false;
-    }, { passive: true });
+    }
 
-    el.miniPlayer.addEventListener('touchmove', (e) => {
-      if (e.touches.length !== 1) return;
-      const currentX = e.touches[0].clientX;
-      const currentY = e.touches[0].clientY;
-      const diffX = currentX - touchStartX;
-      const diffY = currentY - touchStartY;
+    function handleMiniTouchMove(clientX, clientY) {
+      const diffX = clientX - startX;
+      const diffY = clientY - startY;
 
       if (Math.abs(diffX) > Math.abs(diffY) && Math.abs(diffX) > 10) {
         isSwiping = true;
-        el.miniPlayer.style.transform = `translateX(${diffX * 0.35}px)`;
+        wasSwipingMiniRecently = true;
+        el.miniPlayer.style.transform = `translateX(${diffX * 0.4}px)`;
         el.miniPlayer.classList.toggle('swiping-left', diffX < -15);
         el.miniPlayer.classList.toggle('swiping-right', diffX > 15);
       }
-    }, { passive: true });
+    }
 
-    el.miniPlayer.addEventListener('touchend', (e) => {
-      const touchEndX = e.changedTouches[0]?.clientX || touchStartX;
-      const touchEndY = e.changedTouches[0]?.clientY || touchStartY;
-      const diffX = touchEndX - touchStartX;
-      const diffY = touchEndY - touchStartY;
-      const elapsed = performance.now() - touchStartTime;
+    function handleMiniTouchEnd(clientX, clientY) {
+      const diffX = clientX - startX;
+      const diffY = clientY - startY;
+      const elapsed = performance.now() - startTime;
 
       el.miniPlayer.style.transform = '';
       el.miniPlayer.classList.remove('swiping-left', 'swiping-right');
 
       if (isSwiping) {
-        if (diffX < -40 || (diffX < -25 && elapsed < 300)) {
+        wasSwipingMiniRecently = true;
+        setTimeout(() => { wasSwipingMiniRecently = false; }, 400);
+
+        // Horizontal Swipe Detection
+        if (diffX < -35 || (diffX < -20 && elapsed < 260)) {
           // Swipe Left -> Skip to Next Track
-          if (typeof navigator.vibrate === 'function') navigator.vibrate(20);
+          if (typeof navigator.vibrate === 'function') navigator.vibrate(25);
           player.next();
           showToast('⏭️ Next Track', 'info');
-        } else if (diffX > 40 || (diffX > 25 && elapsed < 300)) {
+        } else if (diffX > 35 || (diffX > 20 && elapsed < 260)) {
           // Swipe Right -> Skip to Previous Track
-          if (typeof navigator.vibrate === 'function') navigator.vibrate(20);
+          if (typeof navigator.vibrate === 'function') navigator.vibrate(25);
           player.previous(true);
           showToast('⏮️ Previous Track', 'info');
         }
-      } else if (diffY < -40) {
+      } else if (diffY < -35) {
         // Swipe Up -> Expand Fullscreen Player
         openNowPlayingSheet();
       }
+      isSwiping = false;
+    }
+
+    // Touch Event Listeners (iOS & Android Mobile Web)
+    el.miniPlayer.addEventListener('touchstart', (e) => {
+      if (e.touches.length !== 1) return;
+      handleMiniTouchStart(e.touches[0].clientX, e.touches[0].clientY);
     }, { passive: true });
+
+    el.miniPlayer.addEventListener('touchmove', (e) => {
+      if (e.touches.length !== 1) return;
+      handleMiniTouchMove(e.touches[0].clientX, e.touches[0].clientY);
+    }, { passive: true });
+
+    el.miniPlayer.addEventListener('touchend', (e) => {
+      const endX = e.changedTouches[0]?.clientX ?? startX;
+      const endY = e.changedTouches[0]?.clientY ?? startY;
+      handleMiniTouchEnd(endX, endY);
+    }, { passive: true });
+
+    el.miniPlayer.addEventListener('touchcancel', () => {
+      el.miniPlayer.style.transform = '';
+      el.miniPlayer.classList.remove('swiping-left', 'swiping-right');
+      isSwiping = false;
+    }, { passive: true });
+
+    // Pointer Event Listeners (Touchscreens, PWA & Mouse Trackpad)
+    el.miniPlayer.addEventListener('pointerdown', (e) => {
+      if (e.target.closest('button') || e.target.closest('#mini-progress-line')) return;
+      activePointerId = e.pointerId;
+      handleMiniTouchStart(e.clientX, e.clientY);
+      try { el.miniPlayer.setPointerCapture(e.pointerId); } catch (_) {}
+    });
+
+    el.miniPlayer.addEventListener('pointermove', (e) => {
+      if (activePointerId !== e.pointerId) return;
+      handleMiniTouchMove(e.clientX, e.clientY);
+    });
+
+    el.miniPlayer.addEventListener('pointerup', (e) => {
+      if (activePointerId !== e.pointerId) return;
+      try { el.miniPlayer.releasePointerCapture(e.pointerId); } catch (_) {}
+      activePointerId = null;
+      handleMiniTouchEnd(e.clientX, e.clientY);
+    });
+
+    el.miniPlayer.addEventListener('pointercancel', (e) => {
+      if (activePointerId !== e.pointerId) return;
+      try { el.miniPlayer.releasePointerCapture(e.pointerId); } catch (_) {}
+      activePointerId = null;
+      el.miniPlayer.style.transform = '';
+      el.miniPlayer.classList.remove('swiping-left', 'swiping-right');
+      isSwiping = false;
+    });
   }
 
   // 2. Fullscreen Sheet Drag-to-Dismiss Gesture
-  const sheetDragHandle = document.getElementById('sheet-drag-handle');
-  const sheetHeaderBar = document.querySelector('.sheet-header-bar');
   let sheetDragStartY = 0;
   let isDraggingSheet = false;
+  let activeSheetPointerId = null;
 
-  function initSheetDragGesture(targetElement) {
-    if (!targetElement || !el.sheet) return;
+  function bindSheetDragTarget(elem) {
+    if (!elem || !el.sheet) return;
 
-    targetElement.addEventListener('touchstart', (e) => {
-      if (e.touches.length !== 1) return;
-      sheetDragStartY = e.touches[0].clientY;
+    function onDragStart(clientY) {
+      const scrollViewport = document.getElementById('sheet-scroll-viewport');
+      if (scrollViewport && scrollViewport.scrollTop > 10) return false;
+      sheetDragStartY = clientY;
       isDraggingSheet = true;
       el.sheet.style.transition = 'none';
-    }, { passive: true });
+      return true;
+    }
 
-    targetElement.addEventListener('touchmove', (e) => {
-      if (!isDraggingSheet || e.touches.length !== 1) return;
-      const currentY = e.touches[0].clientY;
-      const diffY = currentY - sheetDragStartY;
-
+    function onDragMove(clientY) {
+      if (!isDraggingSheet) return;
+      const diffY = clientY - sheetDragStartY;
       if (diffY > 0) {
         el.sheet.style.transform = `translateY(${diffY}px)`;
       }
-    }, { passive: true });
+    }
 
-    targetElement.addEventListener('touchend', (e) => {
+    function onDragEnd(clientY) {
       if (!isDraggingSheet) return;
       isDraggingSheet = false;
-      const endY = e.changedTouches[0]?.clientY || sheetDragStartY;
-      const diffY = endY - sheetDragStartY;
+      const diffY = clientY - sheetDragStartY;
 
-      if (diffY > 90) {
+      if (diffY > 70) {
         closeNowPlayingSheet();
         setTimeout(() => {
           if (el.sheet) {
             el.sheet.style.transform = '';
             el.sheet.style.transition = '';
           }
-        }, 300);
+        }, 320);
       } else {
-        el.sheet.style.transition = 'transform 0.22s cubic-bezier(0.16, 1, 0.3, 1)';
+        el.sheet.style.transition = 'transform 0.24s cubic-bezier(0.16, 1, 0.3, 1)';
         el.sheet.style.transform = 'translateY(0)';
         setTimeout(() => {
           if (el.sheet) el.sheet.style.transition = '';
         }, 250);
       }
+    }
+
+    elem.addEventListener('touchstart', (e) => {
+      if (e.touches.length !== 1) return;
+      onDragStart(e.touches[0].clientY);
     }, { passive: true });
+
+    elem.addEventListener('touchmove', (e) => {
+      if (!isDraggingSheet || e.touches.length !== 1) return;
+      onDragMove(e.touches[0].clientY);
+    }, { passive: true });
+
+    elem.addEventListener('touchend', (e) => {
+      const endY = e.changedTouches[0]?.clientY ?? sheetDragStartY;
+      onDragEnd(endY);
+    }, { passive: true });
+
+    elem.addEventListener('pointerdown', (e) => {
+      if (e.target.closest('button') || e.target.closest('.sheet-timeline-container')) return;
+      if (onDragStart(e.clientY)) {
+        activeSheetPointerId = e.pointerId;
+        try { elem.setPointerCapture(e.pointerId); } catch (_) {}
+      }
+    });
+
+    elem.addEventListener('pointermove', (e) => {
+      if (activeSheetPointerId !== e.pointerId) return;
+      onDragMove(e.clientY);
+    });
+
+    elem.addEventListener('pointerup', (e) => {
+      if (activeSheetPointerId !== e.pointerId) return;
+      try { elem.releasePointerCapture(e.pointerId); } catch (_) {}
+      activeSheetPointerId = null;
+      onDragEnd(e.clientY);
+    });
+
+    elem.addEventListener('pointercancel', (e) => {
+      if (activeSheetPointerId !== e.pointerId) return;
+      try { elem.releasePointerCapture(e.pointerId); } catch (_) {}
+      activeSheetPointerId = null;
+      if (isDraggingSheet) {
+        isDraggingSheet = false;
+        el.sheet.style.transition = 'transform 0.24s ease';
+        el.sheet.style.transform = 'translateY(0)';
+        setTimeout(() => { if (el.sheet) el.sheet.style.transition = ''; }, 250);
+      }
+    });
   }
 
-  initSheetDragGesture(sheetDragHandle);
-  initSheetDragGesture(sheetHeaderBar);
+  const sheetDragHandle = document.getElementById('sheet-drag-handle');
+  const sheetHeaderBar = document.querySelector('.sheet-header-bar');
+  const sheetArtwork = document.getElementById('sheet-artwork');
+  const sheetArtworkContainer = document.querySelector('.sheet-artwork-container');
+
+  bindSheetDragTarget(sheetDragHandle);
+  bindSheetDragTarget(sheetHeaderBar);
+  bindSheetDragTarget(sheetArtwork);
+  bindSheetDragTarget(sheetArtworkContainer);
 
   // Escape key closes open modal or expanded player
   document.addEventListener('keydown', (e) => {

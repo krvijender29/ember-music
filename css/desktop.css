@@ -75,7 +75,9 @@
     max-width: calc(100vw - 16px) !important;
     z-index: 200 !important;
     box-sizing: border-box !important;
-    transform: none !important;
+    touch-action: none !important;
+    user-select: none !important;
+    -webkit-user-select: none !important;
   }
 
   .ember-content-body {
