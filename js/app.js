@@ -845,8 +845,39 @@ async function initApp() {
     const action = typeof statusMessage === 'function' ? statusMessage : actionCallback;
     const token = ++activeTransitionToken;
     const direction = document.documentElement.dataset.navDirection || 'forward';
+    const isMobile = window.innerWidth <= 768 || ('ontouchstart' in window);
 
-    // 1. Native View Transitions API (Modern Browsers: Chrome 111+, Edge, Safari 18+)
+    // 1. Mobile Layout: Direct GPU-accelerated Keyframe Slide (Butter-smooth 60/120fps)
+    if (isMobile) {
+      let actionPromise = null;
+      if (typeof action === 'function') {
+        try {
+          const res = action();
+          if (res && typeof res.then === 'function') {
+            actionPromise = res;
+          }
+        } catch (err) {
+          console.warn('[Ember] Mobile tab render error:', err);
+        }
+      }
+
+      if (el.viewport) {
+        el.viewport.scrollTop = 0;
+        el.viewport.classList.remove('mobile-tab-slide-forward', 'mobile-tab-slide-backward', 'tab-slide-forward', 'tab-slide-backward');
+        void el.viewport.offsetWidth; // Force reflow
+        const slideClass = direction === 'backward' ? 'mobile-tab-slide-backward' : 'mobile-tab-slide-forward';
+        el.viewport.classList.add(slideClass);
+        const onEnd = () => {
+          if (el.viewport) el.viewport.classList.remove(slideClass);
+        };
+        el.viewport.addEventListener('animationend', onEnd, { once: true });
+        setTimeout(onEnd, 260);
+      }
+
+      return actionPromise || Promise.resolve();
+    }
+
+    // 2. Desktop: Native View Transitions API (Modern Chromium / WebKit)
     if (typeof document.startViewTransition === 'function' && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
       try {
         const vt = document.startViewTransition(() => {
@@ -854,9 +885,7 @@ async function initApp() {
             action();
           }
           if (el.viewport) {
-            el.viewport.classList.remove('tab-anim-cascade');
-            void el.viewport.offsetWidth;
-            el.viewport.classList.add('tab-anim-cascade');
+            el.viewport.scrollTop = 0;
           }
         });
         return vt.finished.catch(() => {});
@@ -865,15 +894,16 @@ async function initApp() {
       }
     }
 
-    // 2. High-Speed Scoped CSS Viewport Fallback with Directional Slide
+    // 3. Desktop High-Speed Scoped CSS Viewport Fallback
     if (el.viewport) {
+      el.viewport.scrollTop = 0;
       el.viewport.classList.remove('tab-slide-forward', 'tab-slide-backward', 'tab-anim-cascade');
       void el.viewport.offsetWidth; // Force reflow
       const fallbackClass = direction === 'backward' ? 'tab-slide-backward' : 'tab-slide-forward';
-      el.viewport.classList.add(fallbackClass, 'tab-anim-cascade');
+      el.viewport.classList.add(fallbackClass);
       setTimeout(() => {
-        if (el.viewport) el.viewport.classList.remove(fallbackClass, 'tab-anim-cascade');
-      }, 350);
+        if (el.viewport) el.viewport.classList.remove(fallbackClass);
+      }, 300);
     }
 
     if (typeof action === 'function') {
@@ -3024,11 +3054,13 @@ async function initApp() {
           }
         </div>
 
-        <!-- Cloud Integration & Sign Out Actions -->
-        <div style="width:100%; margin-top:24px; display:flex; flex-direction:column; gap:10px;">
-          <button class="ember-pill" id="btn-open-cloud-config" style="width:100%; justify-content:center; padding:12px; font-size:0.82rem;">
-            ⚙ Cloud Settings (Firebase &amp; Supabase)
-          </button>
+        <!-- Creator Signature & Sign Out Actions -->
+        <div style="width:100%; margin-top:24px; margin-bottom:36px; display:flex; flex-direction:column; gap:12px; align-items:center;">
+          <div class="profile-creator-tag" id="profile-creator-tag" data-text="Made My Vijender Singh" style="width:100%; text-align:center; padding:14px 18px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:14px; color:var(--text-white); font-family:var(--font-display); font-size:0.88rem; font-weight:700; letter-spacing:0.03em; display:flex; align-items:center; justify-content:center; gap:8px;">
+            <span style="color:#ff6b4a; font-size:1.1rem; filter:drop-shadow(0 0 8px rgba(255,107,74,0.6));">⚡</span>
+            <span>Made by Vijender Singh</span>
+            <span style="display:none;" aria-hidden="true">Made My Vijender Singh</span>
+          </div>
           ${user
             ? `<button class="ember-pill" id="btn-sign-out" style="width:100%; justify-content:center; padding:12px; font-size:0.82rem; background:rgba(239,68,68,0.15); border-color:rgba(239,68,68,0.4); color:#fca5a5;">Sign Out</button>`
             : ''
@@ -3055,10 +3087,6 @@ async function initApp() {
       showToast('Listening history cleared', 'success');
       cachedProfileData = null;
       renderProfileView();
-    });
-
-    document.getElementById('btn-open-cloud-config')?.addEventListener('click', () => {
-      openCredentialsModal();
     });
 
     document.getElementById('btn-sign-out')?.addEventListener('click', async () => {
@@ -5460,6 +5488,7 @@ async function initApp() {
     el.authModal.style.display = 'none';
     clearAuthAlert();
   }
+  window.closeAuthModal = closeAuthModal;
 
   // Expose auth gate globally
   window.openEmberAuthGate = (reason) => openAuthModal(reason, true);
