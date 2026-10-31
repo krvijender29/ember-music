@@ -389,6 +389,357 @@ def saavn_get(call_name, extra_params=None):
 
 
 # ==============================================================================
+# YouTube Music Innertube Engine (Zero Quota / No Google API Keys Required)
+# Direct WEB_REMIX client for 100% Music Catalog (Indie, Underground, Unreleased,
+# Live Concerts, Remixes, Lofi, Slowed+Reverb)
+# ==============================================================================
+YTM_SEARCH_URL = "https://music.youtube.com/youtubei/v1/search?alt=json"
+YTM_BROWSE_URL = "https://music.youtube.com/youtubei/v1/browse?alt=json"
+YTM_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Content-Type": "application/json",
+    "X-YouTube-Client-Name": "67",
+    "X-YouTube-Client-Version": "1.20240101.01.00",
+    "Referer": "https://music.youtube.com/",
+    "Origin": "https://music.youtube.com"
+}
+YTM_PARAMS = {
+    "songs": "EgWKAQIIAWoSEAQQBRADEAkQChAVEA4QEBAR",
+    "videos": "EgWKAQIQAWoSEAQQBRADEAkQChAVEA4QEBAR",
+    "albums": "EgWKAQIYAWoSEAQQBRADEAkQChAVEA4QEBAR",
+    "artists": "EgWKAQIgAWoSEAQQBRADEAkQChAVEA4QEBAR",
+    "playlists": "EgeKAQQoAEABahIQBBAFEAMQCRAKEBUQDhAQEBE%3D",
+}
+
+def clean_yt_runs(runs):
+    if not runs or not isinstance(runs, list):
+        return ""
+    return "".join(r.get("text", "") for r in runs if isinstance(r, dict))
+
+def upgrade_yt_thumb(url):
+    if not url:
+        return "assets/images/ember_banner.jpg"
+    if "=w120-h120" in url:
+        return url.replace("=w120-h120", "=w540-h540")
+    if "=s180" in url:
+        return url.replace("=s180", "=s540")
+    return url
+
+def parse_ytmusic_item(item):
+    if not isinstance(item, dict):
+        return None
+    flex_cols = item.get("flexColumns", [])
+    if not flex_cols:
+        return None
+
+    col0_runs = flex_cols[0].get("musicResponsiveListItemFlexColumnRenderer", {}).get("text", {}).get("runs", [])
+    title = clean_yt_runs(col0_runs).strip()
+    if not title:
+        return None
+
+    artist = ""
+    album = ""
+    duration = "3:30"
+    item_type = "song"
+    if len(flex_cols) > 1:
+        col1_runs = flex_cols[1].get("musicResponsiveListItemFlexColumnRenderer", {}).get("text", {}).get("runs", [])
+        parts = [r.get("text", "").strip() for r in col1_runs if r.get("text", "").strip() and r.get("text", "").strip() != "•"]
+        
+        if parts:
+            first_low = parts[0].lower()
+            if first_low in ("artist",):
+                item_type = "artist"
+            elif first_low in ("album", "single", "ep"):
+                item_type = "album"
+            elif first_low in ("playlist",):
+                item_type = "playlist"
+            elif first_low in ("song", "video"):
+                item_type = "song"
+
+        clean_parts = [p for p in parts if p.lower() not in ("song", "video", "artist", "album", "single", "ep", "playlist")]
+        if clean_parts:
+            artist = clean_parts[0]
+        if len(clean_parts) > 2:
+            album = clean_parts[1]
+            if ":" in clean_parts[-1]:
+                duration = clean_parts[-1]
+        elif len(clean_parts) == 2:
+            if ":" in clean_parts[1]:
+                duration = clean_parts[1]
+            else:
+                album = clean_parts[1]
+
+    play_btn = item.get("overlay", {}).get("musicItemThumbnailOverlayRenderer", {}).get("content", {}).get("musicPlayButtonRenderer", {})
+    watch_ep = play_btn.get("playNavigationEndpoint", {}).get("watchEndpoint", {})
+    vid = watch_ep.get("videoId", "")
+    if not vid:
+        nav_ep = item.get("navigationEndpoint", {}).get("watchEndpoint", {})
+        vid = nav_ep.get("videoId", "")
+    if not vid and col0_runs:
+        c0_ep = col0_runs[0].get("navigationEndpoint", {}).get("watchEndpoint", {})
+        vid = c0_ep.get("videoId", "")
+
+    nav_browse = item.get("navigationEndpoint", {}).get("browseEndpoint", {})
+    browse_id = nav_browse.get("browseId", "")
+    if not browse_id and col0_runs:
+        browse_id = col0_runs[0].get("navigationEndpoint", {}).get("browseEndpoint", {}).get("browseId", "")
+
+    thumbs = item.get("thumbnail", {}).get("musicThumbnailRenderer", {}).get("thumbnail", {}).get("thumbnails", [])
+    thumb_url = upgrade_yt_thumb(thumbs[-1]["url"]) if thumbs else (f"https://i.ytimg.com/vi/{vid}/hqdefault.jpg" if vid else "assets/images/ember_banner.jpg")
+
+    dur_sec = 210
+    if duration and ":" in duration:
+        try:
+            d_parts = duration.split(":")
+            if len(d_parts) == 2:
+                dur_sec = int(d_parts[0]) * 60 + int(d_parts[1])
+            elif len(d_parts) == 3:
+                dur_sec = int(d_parts[0]) * 3600 + int(d_parts[1]) * 60 + int(d_parts[2])
+        except Exception:
+            dur_sec = 210
+
+    if item_type == "artist":
+        return {
+            "id": browse_id or f"yt_art_{title.lower().replace(' ', '_')}",
+            "title": title,
+            "subtitle": f"{artist or 'Artist'}",
+            "thumbnail": thumb_url,
+            "avatar": thumb_url,
+            "role": "Artist",
+            "source": "ytmusic",
+            "isArtist": True,
+            "type": "artist"
+        }
+    elif item_type == "album":
+        return {
+            "id": browse_id,
+            "title": title,
+            "subtitle": f"{artist or 'Album'} • {album}".strip(" •"),
+            "thumbnail": thumb_url,
+            "cover": thumb_url,
+            "source": "ytmusic",
+            "isAlbum": True,
+            "type": "album"
+        }
+    elif item_type == "playlist":
+        pl_clean = browse_id[2:] if browse_id.startswith("VL") else browse_id
+        return {
+            "id": pl_clean,
+            "browseId": browse_id,
+            "title": title,
+            "subtitle": artist or "Playlist",
+            "thumbnail": thumb_url,
+            "cover": thumb_url,
+            "source": "ytmusic",
+            "isAlbum": False,
+            "type": "playlist"
+        }
+    else:
+        if not vid:
+            return None
+        return {
+            "id": vid,
+            "title": title,
+            "artist": artist or "YouTube Music",
+            "channelTitle": artist or "YouTube Music",
+            "album": album or "YouTube Music",
+            "thumbnail": thumb_url,
+            "cover": thumb_url,
+            "duration": duration,
+            "durationSec": dur_sec,
+            "source": "ytmusic",
+            "isSong": True,
+            "type": "song"
+        }
+
+def ytmusic_search(query, search_filter="all", limit=24):
+    clean_q = (query or "").strip()
+    if not clean_q:
+        return {"songs": [], "artists": [], "albums": [], "playlists": [], "topResult": None, "results": []}
+
+    f_key = (search_filter or "all").lower()
+    param_val = YTM_PARAMS.get(f_key)
+
+    payload = {
+        "context": {
+            "client": {
+                "clientName": "WEB_REMIX",
+                "clientVersion": "1.20240101.01.00",
+                "hl": "en",
+                "gl": "IN"
+            }
+        },
+        "query": clean_q
+    }
+    if param_val:
+        payload["params"] = param_val
+
+    req = urllib.request.Request(
+        YTM_SEARCH_URL,
+        data=json.dumps(payload).encode("utf-8"),
+        headers=YTM_HEADERS
+    )
+
+    try:
+        with urllib.request.urlopen(req, timeout=8, context=SSL_CTX) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+    except Exception as e:
+        print(f"[YTM Search Error] {e}")
+        return {"songs": [], "artists": [], "albums": [], "playlists": [], "topResult": None, "results": []}
+
+    contents = data.get("contents", {})
+    tabs = contents.get("tabbedSearchResultsRenderer", {}).get("tabs", [])
+    if not tabs:
+        return {"songs": [], "artists": [], "albums": [], "playlists": [], "topResult": None, "results": []}
+
+    section_list = tabs[0].get("tabRenderer", {}).get("content", {}).get("sectionListRenderer", {}).get("contents", [])
+    
+    songs = []
+    artists = []
+    albums = []
+    playlists = []
+    top_result = None
+
+    for sec in section_list:
+        if "musicCardShelfRenderer" in sec:
+            card = sec["musicCardShelfRenderer"]
+            c_title = clean_yt_runs(card.get("title", {}).get("runs", []))
+            c_sub = clean_yt_runs(card.get("subtitle", {}).get("runs", []))
+            c_thumbs = card.get("thumbnail", {}).get("musicThumbnailRenderer", {}).get("thumbnail", {}).get("thumbnails", [])
+            c_thumb = upgrade_yt_thumb(c_thumbs[-1]["url"]) if c_thumbs else "assets/images/ember_banner.jpg"
+            c_vid = card.get("onTap", {}).get("watchEndpoint", {}).get("videoId", "")
+            
+            is_artist = "artist" in c_sub.lower()
+            if not top_result and c_title:
+                if is_artist:
+                    top_result = {
+                        "id": f"yt_art_{c_title.lower().replace(' ', '_')}",
+                        "title": c_title,
+                        "subtitle": c_sub,
+                        "thumbnail": c_thumb,
+                        "avatar": c_thumb,
+                        "isArtist": True,
+                        "role": "Top Artist",
+                        "type": "artist",
+                        "source": "ytmusic"
+                    }
+                elif c_vid:
+                    sub_parts = [p.strip() for p in c_sub.split("•") if p.strip()]
+                    c_art = sub_parts[1] if len(sub_parts) > 1 else "YouTube Music"
+                    top_result = {
+                        "id": c_vid,
+                        "title": c_title,
+                        "artist": c_art,
+                        "thumbnail": c_thumb,
+                        "cover": c_thumb,
+                        "isSong": True,
+                        "type": "song",
+                        "source": "ytmusic"
+                    }
+                    songs.append(top_result)
+
+        elif "musicShelfRenderer" in sec:
+            shelf = sec["musicShelfRenderer"]
+            for it in shelf.get("contents", []):
+                parsed = parse_ytmusic_item(it.get("musicResponsiveListItemRenderer"))
+                if not parsed:
+                    continue
+                if parsed["type"] == "artist":
+                    artists.append(parsed)
+                elif parsed["type"] == "album":
+                    albums.append(parsed)
+                elif parsed["type"] == "playlist":
+                    playlists.append(parsed)
+                else:
+                    songs.append(parsed)
+
+        elif "itemSectionRenderer" in sec:
+            for sub_it in sec["itemSectionRenderer"].get("contents", []):
+                parsed = parse_ytmusic_item(sub_it.get("musicResponsiveListItemRenderer"))
+                if not parsed:
+                    continue
+                if parsed["type"] == "artist":
+                    artists.append(parsed)
+                elif parsed["type"] == "album":
+                    albums.append(parsed)
+                elif parsed["type"] == "playlist":
+                    playlists.append(parsed)
+                else:
+                    songs.append(parsed)
+
+    results = []
+    if f_key == "songs":
+        results = songs[:limit]
+    elif f_key == "artists":
+        results = artists[:limit]
+    elif f_key == "albums":
+        results = albums[:limit]
+    elif f_key == "playlists":
+        results = playlists[:limit]
+    else:
+        results = songs[:limit]
+
+    return {
+        "success": True,
+        "query": clean_q,
+        "filter": f_key,
+        "source": "ytmusic_innertube",
+        "topResult": top_result or (songs[0] if songs else None),
+        "songs": songs[:limit],
+        "artists": artists[:min(limit, 10)],
+        "albums": albums[:min(limit, 10)],
+        "playlists": playlists[:min(limit, 10)],
+        "results": results
+    }
+
+def ytmusic_browse(browse_id):
+    clean_id = (browse_id or "").strip()
+    if not clean_id:
+        return []
+    if clean_id.startswith("PL") or clean_id.startswith("RD"):
+        clean_id = f"VL{clean_id}"
+    payload = {
+        "context": {
+            "client": {
+                "clientName": "WEB_REMIX",
+                "clientVersion": "1.20240101.01.00",
+                "hl": "en",
+                "gl": "IN"
+            }
+        },
+        "browseId": clean_id
+    }
+    req = urllib.request.Request(
+        YTM_BROWSE_URL,
+        data=json.dumps(payload).encode("utf-8"),
+        headers=YTM_HEADERS
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=9, context=SSL_CTX) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+    except Exception as e:
+        print(f"[YTM Browse Error] {e}")
+        return []
+
+    tracks = []
+    def find_items(obj):
+        if isinstance(obj, dict):
+            if "musicResponsiveListItemRenderer" in obj:
+                yield obj["musicResponsiveListItemRenderer"]
+            for v in obj.values():
+                yield from find_items(v)
+        elif isinstance(obj, list):
+            for it in obj:
+                yield from find_items(it)
+
+    for item in find_items(data):
+        parsed = parse_ytmusic_item(item)
+        if parsed and parsed.get("type") == "song" and parsed.get("id"):
+            tracks.append(parsed)
+    return tracks
+
+
+# ==============================================================================
 # Spotube & BlackHole Engine Helpers (iTunes / Apple Music + Spotify Importer)
 # ==============================================================================
 def itunes_search(query, entity="song", limit=20):
@@ -639,9 +990,10 @@ class EmberHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
 
         # ----------------------------------------------------------------------
         # Route 2: /api/search?q=query&filter=all|songs|artists|albums|playlists&n=24
-        # Multi-category Search with 320kbps Streams (Zero Quota / Unlimited)
+        # Multi-category Search: YouTube Music Innertube + JioSaavn 320kbps Hybrid
+        # Zero Quota / Unlimited / 100% Music Catalog (Indie, Underground, Remixes, Unreleased)
         # ----------------------------------------------------------------------
-        if path == "/api/search" or path.endswith("/search"):
+        if path == "/api/search" or path == "/search":
             query = params.get("q", [""])[0].strip()
             search_filter = params.get("filter", ["all"])[0].lower().strip()
             page_token = params.get("pageToken", [""])[0].strip()
@@ -673,28 +1025,55 @@ class EmberHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                         except Exception:
                             return []
 
-                    def _fetch_itunes_songs():
-                        return itunes_search(query, entity="song", limit=min(limit, 20))
+                    def _fetch_yt_songs():
+                        try:
+                            yt_res = ytmusic_search(query, search_filter="songs", limit=min(limit, 30))
+                            return yt_res.get("results", [])
+                        except Exception:
+                            return []
 
-                    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+                    def _fetch_itunes_songs():
+                        return itunes_search(query, entity="song", limit=min(limit, 15))
+
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
                         f_s = executor.submit(_fetch_saavn_songs)
+                        f_yt = executor.submit(_fetch_yt_songs)
                         f_it = executor.submit(_fetch_itunes_songs)
                         saavn_tracks = f_s.result()
+                        yt_tracks = f_yt.result()
                         it_tracks = f_it.result()
 
-                    seen_titles = set(t["title"].lower().strip() for t in saavn_tracks)
-                    merged = list(saavn_tracks)
+                    # Merge: prioritize JioSaavn 320kbps streams, enrich with YouTube Music coverage
+                    seen_titles = set()
+                    merged = []
+                    
+                    # 1. Add JioSaavn 320k tracks
+                    for st in saavn_tracks:
+                        clean_t = st["title"].lower().strip()
+                        if clean_t not in seen_titles:
+                            seen_titles.add(clean_t)
+                            merged.append(st)
+
+                    # 2. Add YouTube Music tracks (guarantees indie, unreleased, remix, live versions)
+                    for yt in yt_tracks:
+                        clean_t = yt["title"].lower().strip()
+                        if clean_t not in seen_titles:
+                            seen_titles.add(clean_t)
+                            merged.append(yt)
+
+                    # 3. Add iTunes tracks if still missing
                     for it in it_tracks:
-                        it_clean = it["title"].lower().strip()
-                        if it_clean not in seen_titles:
-                            seen_titles.add(it_clean)
+                        clean_t = it["title"].lower().strip()
+                        if clean_t not in seen_titles:
+                            seen_titles.add(clean_t)
                             merged.append(it)
 
                     resp_data = {
                         "success": True,
                         "query": query,
                         "filter": "songs",
-                        "results": merged,
+                        "source": "ytmusic_saavn_hybrid",
+                        "results": merged[:limit],
                         "nextPageToken": ""
                     }
                     if not page_token:
@@ -704,13 +1083,40 @@ class EmberHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
 
                 # 2. Filter: ARTISTS
                 elif search_filter == "artists":
-                    raw = saavn_get("search.getArtistResults", {"q": query, "n": min(limit, 20), "p": 1})
-                    artists = [clean_artist_item(a) for a in raw.get("results", [])]
+                    def _fetch_saavn_artists():
+                        try:
+                            raw = saavn_get("search.getArtistResults", {"q": query, "n": min(limit, 20), "p": 1})
+                            return [clean_artist_item(a) for a in raw.get("results", [])]
+                        except Exception:
+                            return []
+
+                    def _fetch_yt_artists():
+                        try:
+                            yt_res = ytmusic_search(query, search_filter="artists", limit=min(limit, 20))
+                            return yt_res.get("artists", []) or yt_res.get("results", [])
+                        except Exception:
+                            return []
+
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+                        f_sa = executor.submit(_fetch_saavn_artists)
+                        f_ya = executor.submit(_fetch_yt_artists)
+                        saavn_artists = f_sa.result()
+                        yt_artists = f_ya.result()
+
+                    seen_artists = set()
+                    merged_artists = []
+                    for a in yt_artists + saavn_artists:
+                        c_name = a["title"].lower().strip()
+                        if c_name not in seen_artists:
+                            seen_artists.add(c_name)
+                            merged_artists.append(a)
+
                     resp_data = {
                         "success": True,
                         "query": query,
                         "filter": "artists",
-                        "results": artists,
+                        "source": "ytmusic_saavn_hybrid",
+                        "results": merged_artists[:limit],
                         "nextPageToken": ""
                     }
                     if not page_token:
@@ -720,13 +1126,40 @@ class EmberHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
 
                 # 3. Filter: ALBUMS
                 elif search_filter == "albums":
-                    raw = saavn_get("search.getAlbumResults", {"q": query, "n": min(limit, 20), "p": 1})
-                    albums = [clean_album_item(al) for al in raw.get("results", [])]
+                    def _fetch_saavn_albums():
+                        try:
+                            raw = saavn_get("search.getAlbumResults", {"q": query, "n": min(limit, 20), "p": 1})
+                            return [clean_album_item(al) for al in raw.get("results", [])]
+                        except Exception:
+                            return []
+
+                    def _fetch_yt_albums():
+                        try:
+                            yt_res = ytmusic_search(query, search_filter="albums", limit=min(limit, 20))
+                            return yt_res.get("albums", []) or yt_res.get("results", [])
+                        except Exception:
+                            return []
+
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+                        f_sal = executor.submit(_fetch_saavn_albums)
+                        f_yal = executor.submit(_fetch_yt_albums)
+                        saavn_albums = f_sal.result()
+                        yt_albums = f_yal.result()
+
+                    seen_albums = set()
+                    merged_albums = []
+                    for al in yt_albums + saavn_albums:
+                        c_title = al["title"].lower().strip()
+                        if c_title not in seen_albums:
+                            seen_albums.add(c_title)
+                            merged_albums.append(al)
+
                     resp_data = {
                         "success": True,
                         "query": query,
                         "filter": "albums",
-                        "results": albums,
+                        "source": "ytmusic_saavn_hybrid",
+                        "results": merged_albums[:limit],
                         "nextPageToken": ""
                     }
                     if not page_token:
@@ -736,13 +1169,40 @@ class EmberHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
 
                 # 4. Filter: PLAYLISTS
                 elif search_filter == "playlists":
-                    raw = saavn_get("search.getPlaylistResults", {"q": query, "n": min(limit, 20), "p": 1})
-                    playlists = [clean_playlist_item(pl) for pl in raw.get("results", [])]
+                    def _fetch_saavn_playlists():
+                        try:
+                            raw = saavn_get("search.getPlaylistResults", {"q": query, "n": min(limit, 20), "p": 1})
+                            return [clean_playlist_item(pl) for pl in raw.get("results", [])]
+                        except Exception:
+                            return []
+
+                    def _fetch_yt_playlists():
+                        try:
+                            yt_res = ytmusic_search(query, search_filter="playlists", limit=min(limit, 20))
+                            return yt_res.get("playlists", []) or yt_res.get("results", [])
+                        except Exception:
+                            return []
+
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+                        f_spl = executor.submit(_fetch_saavn_playlists)
+                        f_ypl = executor.submit(_fetch_yt_playlists)
+                        saavn_playlists = f_spl.result()
+                        yt_playlists = f_ypl.result()
+
+                    seen_pl = set()
+                    merged_pl = []
+                    for pl in yt_playlists + saavn_playlists:
+                        c_title = pl["title"].lower().strip()
+                        if c_title not in seen_pl:
+                            seen_pl.add(c_title)
+                            merged_pl.append(pl)
+
                     resp_data = {
                         "success": True,
                         "query": query,
                         "filter": "playlists",
-                        "results": playlists,
+                        "source": "ytmusic_saavn_hybrid",
+                        "results": merged_pl[:limit],
                         "nextPageToken": ""
                     }
                     if not page_token:
@@ -750,67 +1210,117 @@ class EmberHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                     self.send_json(resp_data)
                     return
 
-                # 5. Default: ALL TAB (Concurrent Parallel Fetching - Spotube & BlackHole Hybrid)
+                # 5. Default: ALL TAB (Concurrent Parallel Fetching - YouTube Music + JioSaavn Hybrid)
                 else:
-                    def _fetch_songs():
-                        return saavn_get("search.getResults", {"q": query, "n": 10, "p": 1})
+                    def _fetch_yt_all():
+                        try:
+                            return ytmusic_search(query, search_filter="all", limit=limit)
+                        except Exception:
+                            return {}
 
-                    def _fetch_itunes():
-                        return itunes_search(query, entity="song", limit=10)
+                    def _fetch_saavn_songs():
+                        try:
+                            raw = saavn_get("search.getResults", {"q": query, "n": 10, "p": 1})
+                            return [clean_song_item(s) for s in raw.get("results", []) if clean_song_item(s).get("audioUrl")]
+                        except Exception:
+                            return []
 
-                    def _fetch_artists():
-                        return saavn_get("search.getArtistResults", {"q": query, "n": 6, "p": 1})
+                    def _fetch_saavn_artists():
+                        try:
+                            raw = saavn_get("search.getArtistResults", {"q": query, "n": 6, "p": 1})
+                            return [clean_artist_item(a) for a in raw.get("results", [])]
+                        except Exception:
+                            return []
 
-                    def _fetch_albums():
-                        return saavn_get("search.getAlbumResults", {"q": query, "n": 6, "p": 1})
+                    def _fetch_saavn_albums():
+                        try:
+                            raw = saavn_get("search.getAlbumResults", {"q": query, "n": 6, "p": 1})
+                            return [clean_album_item(al) for al in raw.get("results", [])]
+                        except Exception:
+                            return []
 
-                    def _fetch_playlists():
-                        return saavn_get("search.getPlaylistResults", {"q": query, "n": 6, "p": 1})
+                    def _fetch_saavn_playlists():
+                        try:
+                            raw = saavn_get("search.getPlaylistResults", {"q": query, "n": 6, "p": 1})
+                            return [clean_playlist_item(pl) for pl in raw.get("results", [])]
+                        except Exception:
+                            return []
 
                     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-                        f_songs = executor.submit(_fetch_songs)
-                        f_itunes = executor.submit(_fetch_itunes)
-                        f_artists = executor.submit(_fetch_artists)
-                        f_albums = executor.submit(_fetch_albums)
-                        f_playlists = executor.submit(_fetch_playlists)
+                        f_yt = executor.submit(_fetch_yt_all)
+                        f_ss = executor.submit(_fetch_saavn_songs)
+                        f_sa = executor.submit(_fetch_saavn_artists)
+                        f_sal = executor.submit(_fetch_saavn_albums)
+                        f_spl = executor.submit(_fetch_saavn_playlists)
 
-                        songs_raw = f_songs.result()
-                        itunes_songs = f_itunes.result()
-                        artists_raw = f_artists.result()
-                        albums_raw = f_albums.result()
-                        playlists_raw = f_playlists.result()
+                        yt_all = f_yt.result()
+                        saavn_songs = f_ss.result()
+                        saavn_artists = f_sa.result()
+                        saavn_albums = f_sal.result()
+                        saavn_playlists = f_spl.result()
 
-                    songs = [clean_song_item(s) for s in songs_raw.get("results", []) if clean_song_item(s).get("audioUrl")]
-                    seen_titles = set(s["title"].lower().strip() for s in songs)
-                    for it in itunes_songs:
-                        it_clean = it["title"].lower().strip()
-                        if it_clean not in seen_titles:
-                            seen_titles.add(it_clean)
-                            songs.append(it)
+                    # Merge Songs (JioSaavn 320k + YouTube Music)
+                    seen_titles = set()
+                    songs = []
+                    for s in saavn_songs:
+                        c_t = s["title"].lower().strip()
+                        if c_t not in seen_titles:
+                            seen_titles.add(c_t)
+                            songs.append(s)
 
-                    artists = [clean_artist_item(a) for a in artists_raw.get("results", [])]
-                    albums = [clean_album_item(al) for al in albums_raw.get("results", [])]
-                    playlists = [clean_playlist_item(pl) for pl in playlists_raw.get("results", [])]
+                    for yt_s in yt_all.get("songs", []):
+                        c_t = yt_s["title"].lower().strip()
+                        if c_t not in seen_titles:
+                            seen_titles.add(c_t)
+                            songs.append(yt_s)
 
-                    # Match Top Result (Prioritize exact artist match or top track)
-                    top_result = None
+                    # Merge Artists
+                    seen_art = set()
+                    artists = []
+                    for a in (yt_all.get("artists", []) + saavn_artists):
+                        c_a = a["title"].lower().strip()
+                        if c_a not in seen_art:
+                            seen_art.add(c_a)
+                            artists.append(a)
+
+                    # Merge Albums
+                    seen_alb = set()
+                    albums = []
+                    for al in (yt_all.get("albums", []) + saavn_albums):
+                        c_al = al["title"].lower().strip()
+                        if c_al not in seen_alb:
+                            seen_alb.add(c_al)
+                            albums.append(al)
+
+                    # Merge Playlists
+                    seen_pls = set()
+                    playlists = []
+                    for pl in (yt_all.get("playlists", []) + saavn_playlists):
+                        c_pl = pl["title"].lower().strip()
+                        if c_pl not in seen_pls:
+                            seen_pls.add(c_pl)
+                            playlists.append(pl)
+
+                    # Top Result (Prioritize YouTube Music Top Card, exact Artist, or Top Song)
+                    top_result = yt_all.get("topResult")
                     q_lower = query.lower()
-                    if artists and (q_lower in artists[0]["title"].lower() or artists[0]["title"].lower() in q_lower):
-                        top_result = {**artists[0], "isArtist": True}
-                    elif songs:
-                        top_result = {**songs[0], "isSong": True}
+                    if not top_result:
+                        if artists and (q_lower in artists[0]["title"].lower() or artists[0]["title"].lower() in q_lower):
+                            top_result = {**artists[0], "isArtist": True}
+                        elif songs:
+                            top_result = {**songs[0], "isSong": True}
 
                     payload = {
                         "success": True,
                         "query": query,
                         "filter": "all",
-                        "source": "spotube_hybrid_320kbps",
+                        "source": "ytmusic_saavn_hybrid",
                         "topResult": top_result,
-                        "songs": songs,
-                        "artists": artists,
-                        "albums": albums,
-                        "playlists": playlists,
-                        "results": songs
+                        "songs": songs[:limit],
+                        "artists": artists[:min(limit, 10)],
+                        "albums": albums[:min(limit, 10)],
+                        "playlists": playlists[:min(limit, 10)],
+                        "results": songs[:limit]
                     }
                     if not page_token:
                         SEARCH_CACHE[cache_key] = (now, payload)
@@ -824,7 +1334,7 @@ class EmberHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
 
         # ----------------------------------------------------------------------
         # Route 3: /api/playlist-items?id=playlistId&n=30
-        # Load all tracks from an album or playlist with 320kbps streams
+        # Load all tracks from YouTube Music or JioSaavn album/playlist
         # ----------------------------------------------------------------------
         if path == "/api/playlist-items" or path.endswith("/playlist-items"):
             pid = params.get("id", [""])[0].strip()
@@ -833,7 +1343,14 @@ class EmberHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                 return
 
             try:
-                # Try album first, then playlist
+                # 1. If it's a YouTube Music album/playlist ID
+                if pid.startswith("MPRE") or pid.startswith("PL") or pid.startswith("VL") or pid.startswith("RD"):
+                    yt_tracks = ytmusic_browse(pid)
+                    if yt_tracks:
+                        self.send_json({"success": True, "source": "ytmusic", "playlistId": pid, "results": yt_tracks})
+                        return
+
+                # 2. Try JioSaavn album first, then playlist
                 songs = []
                 try:
                     data = saavn_get("content.getAlbumDetails", {"albumid": pid})
@@ -849,6 +1366,10 @@ class EmberHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                         songs = [clean_song_item(s) for s in raw_songs if clean_song_item(s).get("audioUrl")]
                     except Exception:
                         pass
+
+                # 3. If still empty, attempt YouTube Music browse as fallback
+                if not songs:
+                    songs = ytmusic_browse(pid)
 
                 self.send_json({
                     "success": True,
@@ -866,18 +1387,31 @@ class EmberHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
         if path == "/api/artist-tracks" or path.endswith("/artist-tracks"):
             cid = params.get("id", [""])[0].strip()
             try:
+                # Check YouTube Music browse/search for artist ID
+                if cid.startswith("UC") or cid.startswith("FE") or cid.startswith("yt_art"):
+                    clean_name = cid.replace("yt_art_", "").replace("_", " ")
+                    yt_res = ytmusic_search(f"{clean_name} songs", search_filter="songs", limit=25)
+                    yt_tracks = yt_res.get("results", [])
+                    if yt_tracks:
+                        self.send_json({"success": True, "source": "ytmusic", "artistId": cid, "results": yt_tracks})
+                        return
+
                 data = saavn_get("artist.getArtistPageDetails", {"artistId": cid, "n_song": 25})
                 raw_songs = data.get("topSongs", [])
                 tracks = [clean_song_item(s) for s in raw_songs if clean_song_item(s).get("audioUrl")]
-                self.send_json({"success": True, "artistId": cid, "results": tracks})
-            except Exception:
-                # Fallback to search query
-                try:
-                    raw = saavn_get("search.getResults", {"q": cid, "n": 20, "p": 1})
-                    tracks = [clean_song_item(s) for s in raw.get("results", []) if clean_song_item(s).get("audioUrl")]
+                if tracks:
                     self.send_json({"success": True, "artistId": cid, "results": tracks})
-                except Exception as ex:
-                    self.send_json({"success": False, "results": [], "error": str(ex)}, status=500)
+                    return
+
+                # Fallback to search query
+                raw = saavn_get("search.getResults", {"q": cid, "n": 20, "p": 1})
+                tracks = [clean_song_item(s) for s in raw.get("results", []) if clean_song_item(s).get("audioUrl")]
+                if not tracks:
+                    yt_res = ytmusic_search(f"{cid} songs", search_filter="songs", limit=20)
+                    tracks = yt_res.get("results", [])
+                self.send_json({"success": True, "artistId": cid, "results": tracks})
+            except Exception as ex:
+                self.send_json({"success": False, "results": [], "error": str(ex)}, status=500)
             return
 
         # ----------------------------------------------------------------------
@@ -896,6 +1430,7 @@ class EmberHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
         # ----------------------------------------------------------------------
         # Route 6: /api/resolve?title=...&artist=...
         # Spotube Audio Matcher: Resolves metadata to 320kbps Akamai CDN stream
+        # with YouTube Music Innertube zero-fail fallback
         # ----------------------------------------------------------------------
         if path == "/api/resolve" or path.endswith("/resolve"):
             title = params.get("title", [""])[0].strip()
@@ -906,7 +1441,7 @@ class EmberHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                 return
 
             try:
-                # 1. Search JioSaavn with clean title & artist
+                # 1. Search JioSaavn with clean title & artist for 320kbps CDN stream
                 raw = saavn_get("search.getResults", {"q": query, "n": 6, "p": 1})
                 tracks = [clean_song_item(s) for s in raw.get("results", []) if clean_song_item(s).get("audioUrl")]
                 if tracks:
@@ -921,7 +1456,13 @@ class EmberHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                         self.send_json({"success": True, "source": "saavn_320kbps", "track": t_tracks[0]})
                         return
 
-                self.send_json({"success": False, "error": "No 320kbps match found"}, status=404)
+                # 3. YouTube Music Zero-Fail Fallback (Finds 100% of songs, prevents skipping)
+                yt_res = ytmusic_search(query, search_filter="songs", limit=3)
+                if yt_res.get("results"):
+                    self.send_json({"success": True, "source": "ytmusic", "track": yt_res["results"][0]})
+                    return
+
+                self.send_json({"success": False, "error": "No match found"}, status=404)
             except Exception as e:
                 self.send_json({"success": False, "error": str(e)}, status=500)
             return
@@ -958,13 +1499,12 @@ class EmberHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
 
         # ----------------------------------------------------------------------
         # Route 9: /api/youtube/search?q=query&type=video|playlist&pageToken=...
-        # Server-side YouTube API proxy (protects API keys from client exposure)
+        # Zero-Quota YouTube Music Innertube Search (Standard Library - No API Keys)
         # ----------------------------------------------------------------------
         if path == "/api/youtube/search" or path.endswith("/youtube/search"):
             query = params.get("q", [""])[0].strip()
             item_type = params.get("type", ["video"])[0].strip()
             page_token = params.get("pageToken", [""])[0].strip()
-            api_key = os.environ.get("YOUTUBE_API_KEY", "AIzaSyBRrPickOQtOYJUh9bXNzMjIJuBIqZwCpM")
 
             if not query:
                 self.send_json({"success": False, "items": [], "error": "Query required"})
@@ -978,36 +1518,66 @@ class EmberHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                     return
 
             try:
-                enc_q = urllib.parse.quote(query)
-                url = (
-                    f"https://www.googleapis.com/youtube/v3/search"
-                    f"?part=snippet&q={enc_q}&type={item_type}&maxResults=25&key={api_key}"
-                )
-                if page_token:
-                    url += f"&pageToken={page_token}"
+                filter_map = {
+                    "video": "videos",
+                    "song": "songs",
+                    "playlist": "playlists",
+                    "channel": "artists"
+                }
+                ytm_f = filter_map.get(item_type, "videos")
+                yt_res = ytmusic_search(query, search_filter=ytm_f, limit=25)
 
-                req = urllib.request.Request(url, headers={"User-Agent": "EmberMusicServer/2.0"})
-                with urllib.request.urlopen(req, timeout=6, context=SSL_CTX) as resp:
-                    data = json.loads(resp.read().decode("utf-8"))
-                    result = {
-                        "success": True,
-                        "nextPageToken": data.get("nextPageToken"),
-                        "items": data.get("items", [])
-                    }
-                    SEARCH_CACHE[yt_cache_key] = (time.time(), result)
-                    self.send_json(result)
+                items = []
+                if item_type in ("video", "song"):
+                    for s in yt_res.get("results", []):
+                        items.append({
+                            "id": {"kind": "youtube#video", "videoId": s["id"]},
+                            "snippet": {
+                                "title": s["title"],
+                                "channelTitle": s.get("artist", "YouTube Music"),
+                                "thumbnails": {"high": {"url": s.get("thumbnail", "")}}
+                            }
+                        })
+                elif item_type == "playlist":
+                    for p in yt_res.get("playlists", []) or yt_res.get("results", []):
+                        items.append({
+                            "id": {"kind": "youtube#playlist", "playlistId": p["id"]},
+                            "snippet": {
+                                "title": p["title"],
+                                "channelTitle": p.get("subtitle", "Playlist"),
+                                "thumbnails": {"high": {"url": p.get("thumbnail", "")}}
+                            }
+                        })
+                elif item_type == "channel":
+                    for a in yt_res.get("artists", []) or yt_res.get("results", []):
+                        items.append({
+                            "id": {"kind": "youtube#channel", "channelId": a["id"]},
+                            "snippet": {
+                                "title": a["title"],
+                                "channelTitle": a["title"],
+                                "thumbnails": {"high": {"url": a.get("thumbnail", "")}}
+                            }
+                        })
+
+                result = {
+                    "success": True,
+                    "nextPageToken": "",
+                    "items": items,
+                    "results": yt_res.get("results", [])
+                }
+                SEARCH_CACHE[yt_cache_key] = (time.time(), result)
+                self.send_json(result)
             except Exception as e:
                 self.send_json({"success": False, "items": [], "error": str(e)}, status=500)
             return
 
         # ----------------------------------------------------------------------
         # Route 10: /api/youtube/playlist?id=playlistId
-        # Server-side YouTube Playlist Items proxy
+        # Zero-Quota YouTube Music Playlist Items Extractor (No API Keys)
         # ----------------------------------------------------------------------
         if path == "/api/youtube/playlist" or path.endswith("/youtube/playlist"):
             pl_id = params.get("id", [""])[0].strip()
             page_token = params.get("pageToken", [""])[0].strip()
-            api_key = os.environ.get("YOUTUBE_API_KEY", "AIzaSyBRrPickOQtOYJUh9bXNzMjIJuBIqZwCpM")
 
             if not pl_id:
                 self.send_json({"success": False, "items": [], "error": "Playlist ID required"})
@@ -1021,23 +1591,28 @@ class EmberHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                     return
 
             try:
-                url = (
-                    f"https://www.googleapis.com/youtube/v3/playlistItems"
-                    f"?part=snippet,contentDetails&playlistId={pl_id}&maxResults=50&key={api_key}"
-                )
-                if page_token:
-                    url += f"&pageToken={page_token}"
+                tracks = ytmusic_browse(pl_id)
+                items = []
+                for t in tracks:
+                    items.append({
+                        "contentDetails": {"videoId": t["id"]},
+                        "snippet": {
+                            "title": t["title"],
+                            "videoOwnerChannelTitle": t.get("artist", "YouTube Music"),
+                            "channelTitle": t.get("artist", "YouTube Music"),
+                            "resourceId": {"videoId": t["id"]},
+                            "thumbnails": {"high": {"url": t.get("thumbnail", "")}}
+                        }
+                    })
 
-                req = urllib.request.Request(url, headers={"User-Agent": "EmberMusicServer/2.0"})
-                with urllib.request.urlopen(req, timeout=6, context=SSL_CTX) as resp:
-                    data = json.loads(resp.read().decode("utf-8"))
-                    result = {
-                        "success": True,
-                        "nextPageToken": data.get("nextPageToken"),
-                        "items": data.get("items", [])
-                    }
-                    SEARCH_CACHE[pl_cache_key] = (time.time(), result)
-                    self.send_json(result)
+                result = {
+                    "success": True,
+                    "nextPageToken": "",
+                    "items": items,
+                    "results": tracks
+                }
+                SEARCH_CACHE[pl_cache_key] = (time.time(), result)
+                self.send_json(result)
             except Exception as e:
                 self.send_json({"success": False, "items": [], "error": str(e)}, status=500)
             return

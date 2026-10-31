@@ -493,13 +493,17 @@ const YouTubeAPI = {
 
     // 2. Client-side direct fallback
     const key = this.getApiKey();
-    const queryParams = new URLSearchParams({ ...params, key });
-    const res = await fetch(`${this.BASE_URL}/${endpoint}?${queryParams.toString()}`);
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err?.error?.message || `YouTube API error: ${res.status}`);
+    if (!key) return { items: [] };
+    try {
+      const queryParams = new URLSearchParams({ ...params, key });
+      const res = await fetch(`${this.BASE_URL}/${endpoint}?${queryParams.toString()}`);
+      if (!res.ok) {
+        return { items: [] };
+      }
+      return await res.json();
+    } catch (_) {
+      return { items: [] };
     }
-    return res.json();
   },
 
   _formatVideoTrack(item, detailsMap = {}) {
