@@ -360,8 +360,15 @@ class MusicPlayer {
     if (this.onTrackChange) this.onTrackChange(track);
     this.updateMediaSession(track);
 
-    // Auto-resolve direct 320kbps CDN stream if missing (Spotube / BlackHole resolver)
-    if (!track.audioUrl && track.title) {
+    // If track is imported from Spotify or Apple Top Charts without a direct YouTube videoId,
+    // resolve to official YouTube Music videoId
+    const isUnresolvedExternal = track.id && (
+      String(track.id).startsWith('sp_') || 
+      String(track.id).startsWith('chart_') || 
+      String(track.id).startsWith('itunes_')
+    );
+
+    if (isUnresolvedExternal && track.title) {
       if (track.previewUrl && this.audio) {
         this.activeEngine = 'audio';
         this.audio.crossOrigin = 'anonymous';
@@ -373,19 +380,29 @@ class MusicPlayer {
         const res = await fetch(`/api/resolve?title=${encodeURIComponent(track.title)}&artist=${encodeURIComponent(track.artist || '')}`);
         if (res.ok) {
           const data = await res.json();
-          if (data && data.success && data.track && data.track.audioUrl) {
-            track.audioUrl = data.track.audioUrl;
+          if (data && data.success && data.track && data.track.id) {
+            track.id = data.track.id;
             if (!track.thumbnail && data.track.thumbnail) track.thumbnail = data.track.thumbnail;
 
-            // Seamlessly upgrade from preview to full 320kbps stream
-            if (this.currentTrack && (this.currentTrack.id === track.id || this.currentTrack.title === track.title)) {
-              const curTime = this.audio ? (this.audio.currentTime || 0) : 0;
-              this.activeEngine = 'audio';
+            if (this.currentTrack && (this.currentTrack.title === track.title)) {
+              this.currentTrack.id = data.track.id;
+              this.activeEngine = 'youtube';
               if (this.audio) {
-                this.audio.crossOrigin = 'anonymous';
-                this.audio.src = track.audioUrl;
-                this.audio.currentTime = curTime;
-                if (this.isPlaying) this.play();
+                this.audio.pause();
+                this.audio.src = '';
+              }
+              if (this.isYtReady && this.ytPlayer && typeof this.ytPlayer.loadVideoById === 'function') {
+                if (autoPlay) {
+                  this.ytPlayer.loadVideoById(track.id);
+                  this.isPlaying = true;
+                  this.initAudioContext();
+                  if (this.audioCtx && this.audioCtx.state === 'suspended') {
+                    try { this.audioCtx.resume(); } catch (_) {}
+                  }
+                  this.startYtTicker();
+                } else {
+                  this.ytPlayer.cueVideoById(track.id);
+                }
               }
             }
           }
@@ -394,8 +411,8 @@ class MusicPlayer {
     }
 
     // Engine Selection:
-    // If track has direct audioUrl (e.g. from local server or CDN), use HTML5 audio.
-    // Otherwise use YouTube IFrame player engine.
+    // If track has direct audioUrl (e.g. from local server or local file), use HTML5 audio.
+    // Otherwise use YouTube Music IFrame player engine.
     if (track.audioUrl) {
       this.activeEngine = 'audio';
       if (this.ytPlayer && typeof this.ytPlayer.pauseVideo === 'function') {
