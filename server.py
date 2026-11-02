@@ -111,6 +111,7 @@ def format_duration(seconds):
 YTM_SEARCH_URL = "https://music.youtube.com/youtubei/v1/search?alt=json"
 YTM_BROWSE_URL = "https://music.youtube.com/youtubei/v1/browse?alt=json"
 YTM_SUGGEST_URL = "https://music.youtube.com/youtubei/v1/music/get_search_suggestions?alt=json"
+YTM_NEXT_URL = "https://music.youtube.com/youtubei/v1/next?alt=json"
 YTM_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     "Content-Type": "application/json",
@@ -506,6 +507,120 @@ def ytmusic_browse(browse_id):
             tracks.append(parsed)
     return tracks
 
+def ytmusic_recommendations(video_id, limit=25):
+    """
+    YouTube Music Automix / Radio Recommendation Engine
+    Uses YouTube Music's proprietary RDAMVM automix playlist to fetch
+    acoustically and algorithmically matched songs based on the seed track.
+    """
+    clean_vid = (video_id or "").strip()
+    if not clean_vid:
+        return []
+
+    cache_key = f"rec::{clean_vid}::{limit}"
+    now = time.time()
+    if cache_key in SEARCH_CACHE:
+        c_time, c_data = SEARCH_CACHE[cache_key]
+        if now - c_time < 3600:
+            return c_data
+
+    payload = {
+        "context": {
+            "client": {
+                "clientName": "WEB_REMIX",
+                "clientVersion": "1.20240101.01.00",
+                "hl": "en",
+                "gl": "IN"
+            }
+        },
+        "videoId": clean_vid,
+        "playlistId": f"RDAMVM{clean_vid}",
+        "isAudioOnly": True
+    }
+
+    req = urllib.request.Request(
+        YTM_NEXT_URL,
+        data=json.dumps(payload).encode("utf-8"),
+        headers=YTM_HEADERS
+    )
+
+    tracks = []
+    try:
+        with urllib.request.urlopen(req, timeout=9, context=SSL_CTX) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+
+        tabs = data.get("contents", {}).get("singleColumnMusicWatchNextResultsRenderer", {}).get("tabbedRenderer", {}).get("watchNextTabbedResultsRenderer", {}).get("tabs", [])
+        if tabs:
+            tab0 = tabs[0].get("tabRenderer", {})
+            pl_panel = tab0.get("content", {}).get("musicQueueRenderer", {}).get("content", {}).get("playlistPanelRenderer", {})
+            items = pl_panel.get("contents", [])
+
+            seen = {clean_vid}
+
+            for item in items:
+                panel_item = item.get("playlistPanelVideoRenderer")
+                if not panel_item:
+                    continue
+                vid = panel_item.get("videoId")
+                if not vid or vid in seen:
+                    continue
+                seen.add(vid)
+
+                title = clean_yt_runs(panel_item.get("title", {}).get("runs", [])).strip()
+                if not title:
+                    continue
+
+                byline_runs = panel_item.get("longBylineText", {}).get("runs", [])
+                byline_text = clean_yt_runs(byline_runs).strip()
+                byline_parts = [p.strip() for p in byline_text.split("•") if p.strip()]
+                artist = byline_parts[0] if byline_parts else "YouTube Music"
+                album = byline_parts[1] if len(byline_parts) > 1 else "YouTube Music"
+
+                dur_text = clean_yt_runs(panel_item.get("lengthText", {}).get("runs", [])).strip() or "3:30"
+                dur_sec = 210
+                if dur_text and ":" in dur_text:
+                    try:
+                        parts = dur_text.split(":")
+                        if len(parts) == 2:
+                            dur_sec = int(parts[0]) * 60 + int(parts[1])
+                        elif len(parts) == 3:
+                            dur_sec = int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
+                    except Exception:
+                        dur_sec = 210
+
+                thumbs = panel_item.get("thumbnail", {}).get("thumbnails", [])
+                thumb_url = upgrade_yt_thumb(thumbs[-1]["url"]) if thumbs else f"https://i.ytimg.com/vi/{vid}/hqdefault.jpg"
+
+                tracks.append({
+                    "id": vid,
+                    "title": title,
+                    "artist": artist,
+                    "channelTitle": artist,
+                    "album": album,
+                    "thumbnail": thumb_url,
+                    "cover": thumb_url,
+                    "duration": dur_text,
+                    "durationSec": dur_sec,
+                    "source": "ytmusic_recommendation",
+                    "isSong": True,
+                    "type": "song"
+                })
+                if len(tracks) >= limit:
+                    break
+    except Exception as e:
+        print(f"[YTM Rec Error] {e}")
+
+    # Fallback: if Automix returned nothing, search for similar tracks
+    if not tracks:
+        try:
+            yt_res = ytmusic_search(f"{clean_vid} songs", search_filter="songs", limit=limit)
+            tracks = [t for t in yt_res.get("results", []) if t.get("id") != clean_vid]
+        except Exception:
+            pass
+
+    SEARCH_CACHE[cache_key] = (now, tracks)
+    return tracks
+
 
 # ==============================================================================
 # Spotube & BlackHole Engine Helpers (iTunes / Apple Music + Spotify Importer)
@@ -868,6 +983,33 @@ class EmberHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                 self.send_json({"success": False, "error": "No match found"}, status=404)
             except Exception as e:
                 self.send_json({"success": False, "error": str(e)}, status=500)
+            return
+
+        # ----------------------------------------------------------------------
+        # Route 6B: /api/recommendations?videoId=...&n=20 (or /api/radio)
+        # YouTube Music Native Up Next & Automix AI Recommendation Algorithm
+        # ----------------------------------------------------------------------
+        if path in ("/api/recommendations", "/api/radio") or path.endswith("/recommendations") or path.endswith("/radio"):
+            vid = params.get("videoId", [""])[0].strip() or params.get("id", [""])[0].strip()
+            if not vid:
+                self.send_json({"success": False, "results": [], "error": "videoId required"}, status=400)
+                return
+
+            try:
+                limit = int(params.get("n", ["20"])[0])
+            except (ValueError, TypeError):
+                limit = 20
+
+            try:
+                recs = ytmusic_recommendations(vid, limit=limit)
+                self.send_json({
+                    "success": True,
+                    "videoId": vid,
+                    "source": "ytmusic_automix",
+                    "results": recs
+                })
+            except Exception as e:
+                self.send_json({"success": False, "results": [], "error": str(e)}, status=500)
             return
 
         # ----------------------------------------------------------------------

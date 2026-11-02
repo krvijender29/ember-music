@@ -4022,6 +4022,7 @@ async function initApp() {
   const optTitle = document.getElementById('options-modal-title');
   const optArtist = document.getElementById('options-modal-artist');
   const btnCloseSongOptions = document.getElementById('btn-close-song-options');
+  const optBtnStartRadio = document.getElementById('opt-btn-start-radio');
   const optBtnPlayNext = document.getElementById('opt-btn-play-next');
   const optBtnAddQueue = document.getElementById('opt-btn-add-queue');
   const optBtnAddPlaylist = document.getElementById('opt-btn-add-playlist');
@@ -4063,6 +4064,18 @@ async function initApp() {
 
   if (btnCloseSongOptions) {
     btnCloseSongOptions.addEventListener('click', closeSongOptionsModal);
+  }
+
+  if (optBtnStartRadio) {
+    optBtnStartRadio.addEventListener('click', () => {
+      const track = activeOptionsTrack || player.currentTrack;
+      closeSongOptionsModal();
+      if (!track) {
+        showToast('No song selected', 'info');
+        return;
+      }
+      player.startRadio(track);
+    });
   }
 
   if (optBtnPlayNext) {

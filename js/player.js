@@ -544,8 +544,8 @@ class MusicPlayer {
     if (this.queueIndex < this.queue.length - 1) {
       this.queueIndex++;
       this.loadTrack(this.queue[this.queueIndex], true);
-      // Pre-fetch infinite flow if listener reaches the last song
-      if (this.infiniteAutoplay && this.queueIndex === this.queue.length - 1) {
+      // Pre-fetch recommendations proactively when approaching the end of queue
+      if (this.infiniteAutoplay && this.queueIndex >= this.queue.length - 2) {
         this.fetchAutoplayRecommendations(this.queue[this.queueIndex]);
       }
     } else {
@@ -571,35 +571,57 @@ class MusicPlayer {
   }
 
   /**
-   * Smart Infinite Autoplay (Ember Flow)
-   * Automatically discovers and appends similar tracks when queue reaches the end.
+   * Smart Infinite Autoplay (YouTube Music AI Recommendation Flow)
+   * Automatically queries YouTube Music's Automix Radio algorithm
+   * to fetch acoustically matched recommendations for the next songs.
    */
   async fetchAutoplayRecommendations(track) {
     if (this.isFetchingAutoplay || !this.infiniteAutoplay) return [];
     this.isFetchingAutoplay = true;
 
     try {
-      const artist = track?.artist || track?.channelTitle || '';
-      let targetQuery = '';
-      if (typeof cleanArtistName === 'function' && artist) {
-        targetQuery = cleanArtistName(artist, track?.title);
-      } else {
-        targetQuery = artist || track?.title || 'Trending Hits';
-      }
-
       let candidates = [];
-      try {
-        const res = await fetch(`/api/search?q=${encodeURIComponent(targetQuery)}&filter=songs&n=15`);
-        if (res.ok) {
-          const data = await res.json();
-          if (data && data.results && data.results.length > 0) {
-            candidates = data.results;
+      const trackId = track?.id ? String(track.id) : '';
+      const isYtTrack = trackId && !trackId.startsWith('sp_') && !trackId.startsWith('chart_') && !trackId.startsWith('itunes_');
+
+      // 1. Primary: YouTube Music Native Up Next & Radio Recommendation Engine
+      if (isYtTrack) {
+        try {
+          const res = await fetch(`/api/recommendations?videoId=${encodeURIComponent(trackId)}&n=20`);
+          if (res.ok) {
+            const data = await res.json();
+            if (data && data.success && Array.isArray(data.results) && data.results.length > 0) {
+              candidates = data.results;
+            }
           }
+        } catch (recErr) {
+          console.warn('[Ember] YouTube Music recommendations endpoint error:', recErr);
         }
-      } catch (err) {
-        console.warn('[Ember] Autoplay search fallback:', err);
       }
 
+      // 2. Fallback: Search by clean artist or title
+      if (candidates.length === 0) {
+        const artist = track?.artist || track?.channelTitle || '';
+        let targetQuery = '';
+        if (typeof cleanArtistName === 'function' && artist) {
+          targetQuery = cleanArtistName(artist, track?.title);
+        } else {
+          targetQuery = artist || track?.title || 'Trending Hits';
+        }
+        try {
+          const res = await fetch(`/api/search?q=${encodeURIComponent(targetQuery)}&filter=songs&n=15`);
+          if (res.ok) {
+            const data = await res.json();
+            if (data && data.results && data.results.length > 0) {
+              candidates = data.results;
+            }
+          }
+        } catch (err) {
+          console.warn('[Ember] Autoplay search fallback:', err);
+        }
+      }
+
+      // 3. Fallback: YouTube Music Trending hits
       if (candidates.length === 0) {
         try {
           const res = await fetch('/api/trending');
@@ -617,11 +639,11 @@ class MusicPlayer {
       const newTracks = candidates.filter(t => t && t.id && !existingIds.has(String(t.id)));
 
       if (newTracks.length > 0) {
-        const toAppend = newTracks.slice(0, 8);
+        const toAppend = newTracks.slice(0, 10);
         this.queue.push(...toAppend);
         this.notifyQueueChange();
         if (typeof showToast === 'function') {
-          showToast(`♾️ Ember Flow: Added ${toAppend.length} similar songs based on ${targetQuery}`, 'info');
+          showToast(`♾️ YouTube Music Flow: Added ${toAppend.length} recommended songs based on "${track?.title || 'current track'}"`, 'info');
         }
         return toAppend;
       }
@@ -631,6 +653,40 @@ class MusicPlayer {
       this.isFetchingAutoplay = false;
     }
     return [];
+  }
+
+  /**
+   * Start an infinite YouTube Music Radio based on a track
+   */
+  async startRadio(track) {
+    if (!track) return;
+    const toast = typeof showToast === 'function' ? showToast : () => {};
+    toast(`📻 Starting YouTube Music Radio for "${track.title}"...`, 'info');
+
+    // Load and play the seed track immediately
+    await this.loadTrack(track, true);
+
+    const trackId = track.id ? String(track.id) : '';
+    if (!trackId || trackId.startsWith('sp_') || trackId.startsWith('chart_')) {
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/recommendations?videoId=${encodeURIComponent(trackId)}&n=25`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.success && Array.isArray(data.results) && data.results.length > 0) {
+          const recs = data.results.filter(t => t && t.id && t.id !== track.id);
+          this.queue = [track, ...recs];
+          this.originalQueue = [...this.queue];
+          this.queueIndex = 0;
+          this.notifyQueueChange();
+          toast(`📻 Radio active: ${recs.length} recommended tracks queued`, 'success');
+        }
+      }
+    } catch (e) {
+      console.warn('[Ember] startRadio error:', e);
+    }
   }
 
   setInfiniteAutoplay(enable) {
