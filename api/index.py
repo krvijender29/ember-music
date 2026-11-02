@@ -578,14 +578,6 @@ def ytmusic_recommendations(video_id, limit=25):
     except Exception as e:
         print(f"[YTM Rec Error] {e}")
 
-    # Fallback: if Automix returned nothing, search for similar tracks
-    if not tracks:
-        try:
-            yt_res = ytmusic_search(f"{clean_vid} songs", search_filter="songs", limit=limit)
-            tracks = [t for t in yt_res.get("results", []) if t.get("id") != clean_vid]
-        except Exception:
-            pass
-
     SEARCH_CACHE[cache_key] = (now, tracks)
     return tracks
 

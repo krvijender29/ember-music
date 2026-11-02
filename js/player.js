@@ -581,55 +581,34 @@ class MusicPlayer {
 
     try {
       let candidates = [];
-      const trackId = track?.id ? String(track.id) : '';
-      const isYtTrack = trackId && !trackId.startsWith('sp_') && !trackId.startsWith('chart_') && !trackId.startsWith('itunes_');
+      let videoId = track?.id ? String(track.id) : '';
 
-      // 1. Primary: YouTube Music Native Up Next & Radio Recommendation Engine
-      if (isYtTrack) {
+      // If track is from Spotify or Apple Charts, resolve its YouTube video ID first
+      if (videoId.startsWith('sp_') || videoId.startsWith('chart_') || videoId.startsWith('itunes_')) {
         try {
-          const res = await fetch(`/api/recommendations?videoId=${encodeURIComponent(trackId)}&n=20`);
-          if (res.ok) {
-            const data = await res.json();
-            if (data && data.success && Array.isArray(data.results) && data.results.length > 0) {
-              candidates = data.results;
+          const resolveRes = await fetch(`/api/resolve?title=${encodeURIComponent(track?.title || '')}&artist=${encodeURIComponent(track?.artist || '')}`);
+          if (resolveRes.ok) {
+            const resolveData = await resolveRes.json();
+            if (resolveData?.track?.id) {
+              videoId = String(resolveData.track.id);
             }
-          }
-        } catch (recErr) {
-          console.warn('[Ember] YouTube Music recommendations endpoint error:', recErr);
-        }
-      }
-
-      // 2. Fallback: Search by clean artist or title
-      if (candidates.length === 0) {
-        const artist = track?.artist || track?.channelTitle || '';
-        let targetQuery = '';
-        if (typeof cleanArtistName === 'function' && artist) {
-          targetQuery = cleanArtistName(artist, track?.title);
-        } else {
-          targetQuery = artist || track?.title || 'Trending Hits';
-        }
-        try {
-          const res = await fetch(`/api/search?q=${encodeURIComponent(targetQuery)}&filter=songs&n=15`);
-          if (res.ok) {
-            const data = await res.json();
-            if (data && data.results && data.results.length > 0) {
-              candidates = data.results;
-            }
-          }
-        } catch (err) {
-          console.warn('[Ember] Autoplay search fallback:', err);
-        }
-      }
-
-      // 3. Fallback: YouTube Music Trending hits
-      if (candidates.length === 0) {
-        try {
-          const res = await fetch('/api/trending');
-          if (res.ok) {
-            const data = await res.json();
-            if (data && data.results) candidates = data.results;
           }
         } catch (_) {}
+      }
+
+      if (!videoId) return [];
+
+      // Query ONLY and EXCLUSIVELY YouTube Music Native /next Automix Radio Recommendation Algorithm
+      try {
+        const res = await fetch(`/api/recommendations?videoId=${encodeURIComponent(videoId)}&n=25`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.success && Array.isArray(data.results)) {
+            candidates = data.results;
+          }
+        }
+      } catch (recErr) {
+        console.warn('[Ember] YouTube Music recommendations endpoint error:', recErr);
       }
 
       // Filter out songs already in the queue or current track
@@ -666,17 +645,25 @@ class MusicPlayer {
     // Load and play the seed track immediately
     await this.loadTrack(track, true);
 
-    const trackId = track.id ? String(track.id) : '';
-    if (!trackId || trackId.startsWith('sp_') || trackId.startsWith('chart_')) {
-      return;
+    let trackId = track.id ? String(track.id) : '';
+    if (trackId.startsWith('sp_') || trackId.startsWith('chart_') || trackId.startsWith('itunes_')) {
+      try {
+        const resolveRes = await fetch(`/api/resolve?title=${encodeURIComponent(track.title || '')}&artist=${encodeURIComponent(track.artist || '')}`);
+        if (resolveRes.ok) {
+          const resolveData = await resolveRes.json();
+          if (resolveData?.track?.id) trackId = String(resolveData.track.id);
+        }
+      } catch (_) {}
     }
+
+    if (!trackId) return;
 
     try {
       const res = await fetch(`/api/recommendations?videoId=${encodeURIComponent(trackId)}&n=25`);
       if (res.ok) {
         const data = await res.json();
         if (data && data.success && Array.isArray(data.results) && data.results.length > 0) {
-          const recs = data.results.filter(t => t && t.id && t.id !== track.id);
+          const recs = data.results.filter(t => t && t.id && t.id !== trackId);
           this.queue = [track, ...recs];
           this.originalQueue = [...this.queue];
           this.queueIndex = 0;
