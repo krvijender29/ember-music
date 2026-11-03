@@ -340,10 +340,11 @@ async function initApp() {
   }
 
   /**
-   * Plays a track selected from search, and fills the subsequent playback queue
-   * with the user's listening history in shuffled order.
+   * Plays a track selected from search, and immediately populates the subsequent queue
+   * strictly with YouTube Music's native /next Automix AI recommendations.
+   * Completely avoids adding unrelated search results or shuffled history.
    */
-  async function playSearchTrackWithShuffledHistory(selectedTrack, searchResults = []) {
+  async function playSearchTrackWithYouTubeRecommendations(selectedTrack) {
     if (!selectedTrack) return;
 
     if (AuthManager.isGuest()) {
@@ -351,77 +352,43 @@ async function initApp() {
       return;
     }
 
-    // 1. Concurrently fetch user listening history (Supabase + LocalStorage)
-    const user = AuthManager.getCurrentUser();
-    let dbHistory = [];
+    // 1. Immediately play the selected track (single-item queue for instantaneous playback)
+    player.setQueue([selectedTrack], 0, true);
+    showToast(`Playing "${selectedTrack.title}"`, 'info');
+
+    let videoId = selectedTrack.id ? String(selectedTrack.id) : '';
+    // If it's an external track (Spotify/Apple), resolve to YouTube video ID first
+    if (videoId.startsWith('sp_') || videoId.startsWith('chart_') || videoId.startsWith('itunes_')) {
+      try {
+        const resolveRes = await fetch(`/api/resolve?title=${encodeURIComponent(selectedTrack.title || '')}&artist=${encodeURIComponent(selectedTrack.artist || '')}`);
+        if (resolveRes.ok) {
+          const resolveData = await resolveRes.json();
+          if (resolveData?.track?.id) videoId = String(resolveData.track.id);
+        }
+      } catch (_) {}
+    }
+
+    if (!videoId) return;
+
+    // 2. Query YouTube Music /next Automix AI Recommendations
     try {
-      if (user?.uid) {
-        dbHistory = await DbManager.getListeningHistory(user.uid, 50);
+      const res = await fetch(`/api/recommendations?videoId=${encodeURIComponent(videoId)}&n=25`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.success && Array.isArray(data.results) && data.results.length > 0) {
+          const recs = data.results.filter(t => t && t.id && String(t.id) !== videoId);
+          // Update player queue: selectedTrack followed strictly by YouTube Music /next recommendations
+          player.queue = [selectedTrack, ...recs];
+          player.originalQueue = [...player.queue];
+          player.queueIndex = 0;
+          player.notifyQueueChange();
+          renderQueueList();
+          showToast(`Playing "${selectedTrack.title}" · Up next: YouTube Music Recommendations (${recs.length} tracks)`, 'info');
+        }
       }
-    } catch (_) {}
-    const localHistory = StorageManager.getRecentTracks() || [];
-
-    // Map local tracks by ID and title for fast resolution of audioUrl/metadata
-    const localMap = new Map();
-    localHistory.forEach(t => {
-      if (t && t.id) localMap.set(t.id, t);
-      if (t && t.title) localMap.set(t.title.trim().toLowerCase(), t);
-    });
-
-    // 2. Deduplicate history pool and exclude the currently selected track
-    const selId = (selectedTrack.id || '').trim();
-    const selTitle = (selectedTrack.title || '').trim().toLowerCase();
-    const selArtist = (selectedTrack.artist || selectedTrack.channelTitle || '').trim().toLowerCase();
-    const selComp = `${selTitle}:::${selArtist}`;
-
-    const seen = new Set();
-    if (selId) seen.add(`id:${selId}`);
-    if (selTitle) seen.add(`title:${selComp}`);
-
-    const pool = [];
-    const allHistory = [...localHistory, ...dbHistory];
-
-    for (const t of allHistory) {
-      if (!t || !t.title) continue;
-      const tId = (t.id || '').trim();
-      const tTitle = (t.title || '').trim().toLowerCase();
-      const tArtist = (t.artist || t.channelTitle || '').trim().toLowerCase();
-      const tComp = `${tTitle}:::${tArtist}`;
-
-      if (tId && seen.has(`id:${tId}`)) continue;
-      if (tTitle && seen.has(`title:${tComp}`)) continue;
-
-      if (tId) seen.add(`id:${tId}`);
-      if (tTitle) seen.add(`title:${tComp}`);
-
-      // Prefer local copy if it has audioUrl
-      const localCopy = localMap.get(tId) || localMap.get(tTitle);
-      const trackObj = (localCopy && localCopy.audioUrl) ? localCopy : t;
-      pool.push(trackObj);
+    } catch (err) {
+      console.warn('[Ember] Error loading search recommendations:', err);
     }
-
-    // 3. Fallback if user has no listening history yet: use other search results
-    if (pool.length === 0 && Array.isArray(searchResults)) {
-      searchResults.forEach(t => {
-        if (!t || !t.title) return;
-        const tId = (t.id || '').trim();
-        const tTitle = (t.title || '').trim().toLowerCase();
-        if ((tId && tId === selId) || (tTitle && tTitle === selTitle)) return;
-        pool.push(t);
-      });
-    }
-
-    // 4. Shuffle the pool using Fisher-Yates shuffle
-    for (let i = pool.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [pool[i], pool[j]] = [pool[j], pool[i]];
-    }
-
-    // 5. Set player queue: [selectedTrack, ...shuffledHistory] and play
-    const fullQueue = [selectedTrack, ...pool];
-    player.setQueue(fullQueue, 0, true);
-
-    showToast(`Playing "${selectedTrack.title}" · Up next: Shuffled history (${pool.length} tracks)`, 'info');
   }
 
   function bindSongRows(container, tracksList, options = {}) {
@@ -445,7 +412,7 @@ async function initApp() {
         if (selectedIndex >= 0) {
           const selectedTrack = tracksList[selectedIndex];
           if (options.isSearch || state.currentTab === 'search') {
-            await playSearchTrackWithShuffledHistory(selectedTrack, tracksList);
+            await playSearchTrackWithYouTubeRecommendations(selectedTrack);
           } else {
             player.setQueue(tracksList, selectedIndex, true);
           }
@@ -1985,7 +1952,7 @@ async function initApp() {
                 openAuthModal('🔒 Please sign in to stream music on EMBER.', true);
                 return;
               }
-              await playSearchTrackWithShuffledHistory(topResult, songs);
+              await playSearchTrackWithYouTubeRecommendations(topResult);
             });
           }
 
